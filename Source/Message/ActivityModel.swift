@@ -82,6 +82,8 @@ struct ActivityModel {
     private(set) var files : [RemoteFile]?
     
     private(set) var isModerator:Bool?
+    
+    private(set) var parentUUID: String?
 }
 
 extension ActivityModel : ImmutableMappable {
@@ -129,6 +131,8 @@ extension ActivityModel : ImmutableMappable {
         self.objectTag = (try? map.value("object.tags", using: SpaceTypeTransform())) ?? SpaceType.group
         self.objectLocked = try? map.value("object.tags", using: LockedTransform())
         self.isModerator = try? map.value("object.roomProperties.isModerator", using: StringAndBoolTransform())
+        
+        self.parentUUID = try? map.value("parent.id")
     }
     
     /// Mapping activity model to json format.
