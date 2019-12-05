@@ -120,6 +120,16 @@ public struct Message {
         return nil
     }
     
+    /// UUID of this message
+    public var uuid: String? {
+        return self.activity.uuid
+    }
+    
+    /// UUID of parent message (for threads)
+    public var parentUUID: String? {
+        return self.activity.parentUUID
+    }
+    
     /// The timestamp that the message being created.
     public var created: Date? {
         if let verb =  self.activity.verb, verb == .post || verb == .share {
