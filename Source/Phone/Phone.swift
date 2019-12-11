@@ -130,6 +130,13 @@ public class Phone {
     let metrics: MetricsEngine
     private(set) var me:Person?
     
+    public func isMe(personID id: String) -> Bool {
+        guard let me = me else {
+            return false
+        }
+        return me.id == id
+    }
+    
     private let webSocket: WebSocketService
     private var calls = [String: Call]()
     private var mediaContext: MediaSessionWrapper?
