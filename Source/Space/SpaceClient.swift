@@ -36,13 +36,15 @@ public class SpaceClient {
     public var onEventWithPayload: ((SpaceEvent, WebexEventPayload) -> Void)?
     
     let phone: Phone
+    let messageClient: MessageClient
 
     var authenticator: Authenticator {
         return self.phone.authenticator
     }
     
-    init(phone: Phone) {
+    init(phone: Phone, messageClient: MessageClient) {
         self.phone = phone
+        self.messageClient = messageClient
     }
     
     private func requestBuilder() -> ServiceRequest.Builder {
@@ -228,23 +230,32 @@ extension SpaceClient {
         guard let verb = activity.verb else {
             return
         }
-        var event: SpaceEvent?
+
         var space = Space()
+        
         if verb == ActivityModel.Verb.create {
             space.id = activity.objectUUID?.hydraFormat(for: .room)
             space.type = activity.objectTag
             space.isLocked = activity.objectLocked
             space.lastActivityTimestamp = activity.created
-            event = SpaceEvent.create(space)
-        } else if verb == ActivityModel.Verb.update {
-            space.id = activity.targetId
-            space.type = activity.targetTag
-            space.isLocked = activity.targetLocked
-            event = SpaceEvent.update(space)
-        }
-        if let event = event {
+            
+            let event = SpaceEvent.create(space)
             self.onEvent?(event)
             self.onEventWithPayload?(event, WebexEventPayload(activity: activity, person: self.phone.me))
+        } else if verb == ActivityModel.Verb.update, let spaceID = activity.targetId {
+            let key = self.messageClient.encryptionKey(spaceId: spaceID)
+            key.material(client: self.messageClient) { material in
+                let decryptedActivity = activity.decrypt(key: material.data)
+                
+                space.id = decryptedActivity.targetId
+                space.type = decryptedActivity.targetTag
+                space.isLocked = decryptedActivity.targetLocked
+                space.title = decryptedActivity.objectDisplayName
+
+                let event = SpaceEvent.update(space)
+                self.onEvent?(event)
+                self.onEventWithPayload?(event, WebexEventPayload(activity: decryptedActivity, person: self.phone.me))
+            }
         }
     }
 }
