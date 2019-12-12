@@ -970,7 +970,7 @@ public class MessageClient {
         }
     }
     
-    func encryptionKey(spaceId: String) -> EncryptionKey {
+    private func encryptionKey(spaceId: String) -> EncryptionKey {
         var key = self.encryptionKeys[spaceId]
         if key == nil {
             key = EncryptionKey(spaceId: spaceId)
