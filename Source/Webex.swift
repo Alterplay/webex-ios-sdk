@@ -118,7 +118,7 @@ public class Webex {
     /// - since: 1.2.0
     /// - see: Memberships API about how to manage people in a space.
     /// - see: Messages API about how post or otherwise manage the content in a space.
-    public lazy var spaces: SpaceClient  = SpaceClient(phone: self.phone, messageClient: self.messages)
+    public lazy var spaces: SpaceClient  = SpaceClient(phone: self.phone)
     
     /// Constructs a new *Webex* object with an `Authenticator`.
     ///
