@@ -130,6 +130,10 @@ public class Phone {
     let metrics: MetricsEngine
     private(set) var me:Person?
     
+    public var myRemoteID: String? {
+        return me?.id
+    }
+    
     public func isMe(personID id: String) -> Bool {
         guard let me = me else {
             return false
