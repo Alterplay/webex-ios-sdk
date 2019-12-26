@@ -300,7 +300,7 @@ public struct RemoteFile {
         public internal(set) var height: Int?
         /// The MIME type of thumbanil file.
         public internal(set) var mimeType: String?
-        var url: String?
+        public var url: String?
         var secureContentRef: String?
     }
     
@@ -313,7 +313,7 @@ public struct RemoteFile {
     /// The thumbnail of the remote file. Nil if no thumbnail availabe.
     public internal(set) var thumbnail: Thumbnail?
     
-    var url: String?
+    public var url: String?
     var secureContentRef: String?
 }
 
