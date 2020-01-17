@@ -121,22 +121,22 @@ public class OAuthAuthenticator : Authenticator {
     /// - parameter parentViewController: the parent view controller for the OAuth view controller
     /// - parameter completionHandler: the completion handler will be called when authentication is complete, with a boolean to indicate if the authentication process was successful. It will be called directly after the OAuth view controller has begun to dismiss itself in an animated way.
     /// - since: 1.2.0
-    public func authorize(parentViewController: UIViewController, completionHandler: ((_ success: Bool) -> Void)? = nil) {
+    public func authorize(parentViewController: UIViewController, completionHandler: ((_ success: Bool, _ errorMessage: String?) -> Void)? = nil) {
         if let authorizationUrl = self.authorizationUrl() {
-            oauthLauncher.launchOAuthViewController(parentViewController: parentViewController, authorizationUrl: authorizationUrl, redirectUri: redirectUri) { oauthCode in
+            oauthLauncher.launchOAuthViewController(parentViewController: parentViewController, authorizationUrl: authorizationUrl, redirectUri: redirectUri) { oauthCode, errorMessage in
                 if let oauthCode = oauthCode {
                     self.fetchingAccessTokenInProcess = true
                     self.oauthClient.fetchAccessTokenFrom(oauthCode: oauthCode, clientId: self.clientId, clientSecret: self.clientSecret, redirectUri: self.redirectUri, completionHandler: { response in
                         self.createAccessTokenHandler(errorHandler: { error in SDKLogger.shared.error("Failure retrieving the access token from the oauth code", error: error)})(response)
-                        completionHandler?(true)
+                        completionHandler?(true, nil)
                     })
                 } else {
-                    completionHandler?(false)
+                    completionHandler?(false, errorMessage)
                 }
             }
         } else {
             SDKLogger.shared.error("Bad URL")
-            completionHandler?(false)
+            completionHandler?(false, "Bad URL")
         }
     }
     

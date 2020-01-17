@@ -38,4 +38,13 @@ class OAuthUrlUtil {
         }
         return nil
     }
+    
+    static func errorDescriptionFor(redirectUrl: URL) -> String? {
+        let query = redirectUrl.queryParameters
+        guard let error = query["error"],
+            let description = query["error_description"] else {
+            return nil
+        }
+        return description
+    }
 }
