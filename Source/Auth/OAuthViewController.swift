@@ -27,11 +27,11 @@ class OAuthViewController: UIViewController, WKNavigationDelegate {
     private var webView: WKWebView!
     private var cancelButton: UIBarButtonItem?
 
-    private let completionHandler: (_ oauthCode: String?) -> Void
+    private let completionHandler: (_ oauthCode: String?, _ errorMessage: String?) -> Void
     private let url: URL
     private let redirectUri: String
     
-    init(authorizationUrl: URL, redirectUri: String, completionHandler: @escaping (_ oauthCode: String?) -> Void) {
+    init(authorizationUrl: URL, redirectUri: String, completionHandler: @escaping (_ oauthCode: String?, _ errorMessage: String?) -> Void) {
         self.url = authorizationUrl
         self.redirectUri = redirectUri
         self.completionHandler = completionHandler
@@ -76,8 +76,16 @@ class OAuthViewController: UIViewController, WKNavigationDelegate {
             // remain, with the expectation that the user can continue to try to log in, or if we should force a cancel or other similar action
             // because it is no longer possible to log in successfully
             let code = OAuthUrlUtil.oauthCodeFor(redirectUrl: url)
-            dismiss()
-            completionHandler(code)
+            dismiss {
+                var errorMessage: String?
+                if (code == nil) {
+                    errorMessage = OAuthUrlUtil.errorDescriptionFor(redirectUrl: url)
+                    if (errorMessage == nil) {
+                        errorMessage = "Authentication failed"
+                    }
+                }
+                self.completionHandler(code, errorMessage)
+            }
         } else {
             decisionHandler(.allow)
         }
@@ -89,11 +97,11 @@ class OAuthViewController: UIViewController, WKNavigationDelegate {
     
     @objc private func cancel(_ sender: Any?) {
         dismiss()
-        completionHandler(nil)
+        completionHandler(nil, nil)
     }
     
-    private func dismiss() {
+    private func dismiss(completion: (() -> Void)? = nil) {
         webView.stopLoading()
-        presentingViewController?.dismiss(animated: true, completion: nil)
+        presentingViewController?.dismiss(animated: true, completion: completion)
     }
 }
