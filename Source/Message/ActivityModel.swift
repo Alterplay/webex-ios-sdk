@@ -181,7 +181,7 @@ extension ActivityModel {
     }
 }
 
-enum IdentityType : String {
+public enum IdentityType : String {
     // TODO: For change Id Need change to space later
     // case space
     case room
@@ -193,7 +193,7 @@ enum IdentityType : String {
     case team
 }
 
-extension String {
+public extension String {
     
     var locusFormat: String {
         if let decode = self.base64Decoded(), let id = decode.components(separatedBy: "/").last {
@@ -206,7 +206,7 @@ extension String {
         return self
     }
     
-    func hydraFormat(for type: IdentityType) -> String {
+    public func hydraFormat(for type: IdentityType) -> String {
         return "ciscospark://us/\(type.rawValue.uppercased())/\(self)".base64Encoded() ?? self
     }
         
