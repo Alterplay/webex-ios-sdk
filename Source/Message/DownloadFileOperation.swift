@@ -21,6 +21,10 @@
 import UIKit
 import Alamofire
 
+@objc public protocol WebexCancellableTask {
+    func cancel()
+}
+
 class DownloadFileOperation : NSObject, URLSessionDataDelegate {
     
     private let authenticator: Authenticator
@@ -28,6 +32,7 @@ class DownloadFileOperation : NSObject, URLSessionDataDelegate {
     private let source: String
     private let secureContentRef: String?
     private var target: URL
+    private let fileName: String?
     private let queue: DispatchQueue
     private let progressHandler: ((Double) -> Void)?
     private let completionHandler : ((Result<URL>) -> Void)
@@ -35,8 +40,10 @@ class DownloadFileOperation : NSObject, URLSessionDataDelegate {
     private var downloadSeesion: URLSession?
     private var totalSize: UInt64?
     private var countSize: UInt64 = 0
+    
+    private let shouldDecryptOnCompletion: Bool
 
-    init(authenticator: Authenticator, uuid: String, source: String, displayName: String?, secureContentRef: String?, thnumnail: Bool, target: URL?, queue: DispatchQueue?, progressHandler: ((Double) -> Void)?, completionHandler: @escaping ((Result<URL>) -> Void)) {
+    init(authenticator: Authenticator, uuid: String, source: String, displayName: String?, secureContentRef: String?, thnumnail: Bool, target: URL?, fileName: String?, queue: DispatchQueue?, progressHandler: ((Double) -> Void)?, completionHandler: @escaping ((Result<URL>) -> Void)) {
         self.authenticator = authenticator
         self.source = source
         self.secureContentRef = secureContentRef
@@ -52,9 +59,18 @@ class DownloadFileOperation : NSObject, URLSessionDataDelegate {
             try? FileManager.default.createDirectory(at: path, withIntermediateDirectories: false, attributes: nil)
             self.target = path
         }
-        var name = UUID().uuidString + "-" + (displayName ?? Date().iso8601String)
-        if (thnumnail) {
-            name = "thumb-" + name
+         self.fileName = fileName
+               var name: String
+               if let fileName = fileName {
+                   name = "encrypted-\(fileName)"
+                   shouldDecryptOnCompletion = true
+               }
+               else {
+                   shouldDecryptOnCompletion = false
+                   name = UUID().uuidString + "-" + (displayName ?? Date().iso8601String)
+                   if (thnumnail) {
+                       name = "thumb-" + name
+                   }
         }
         self.target = self.target.appendingPathComponent(name, isDirectory: false)
     }
@@ -73,6 +89,12 @@ class DownloadFileOperation : NSObject, URLSessionDataDelegate {
             var request = URLRequest(url: url, cachePolicy: URLRequest.CachePolicy.reloadIgnoringCacheData, timeoutInterval: 0)
             request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
             request.setValue("ITCLIENT_\(self.uuid)_0", forHTTPHeaderField: "TrackingID")
+            if FileManager.default.fileExists(atPath: self.target.path),
+                let fileAttributes = try? FileManager.default.attributesOfItem(atPath: self.target.path),
+                let fileSize = fileAttributes[.size] as? UInt64 {
+                request.setValue("bytes=\(fileSize)-", forHTTPHeaderField: "Range")
+                self.countSize = fileSize
+            }
             if let dataTask = self.downloadSeesion?.dataTask(with: request){
                 dataTask.resume()
             }
@@ -81,10 +103,10 @@ class DownloadFileOperation : NSObject, URLSessionDataDelegate {
     
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Swift.Void) {
         if let resp = response as? HTTPURLResponse, let length = (resp.allHeaderFields["Content-Length"] as? String)?.components(separatedBy: "/").last, let size = UInt64(length) {
-            self.totalSize = size
+            self.totalSize = size + self.countSize
             do {
                 var tempOutputStream = OutputStream(toFileAtPath: self.target.path, append: true)
-                if let ref = self.secureContentRef {
+                if !self.shouldDecryptOnCompletion, let ref = self.secureContentRef {
                     tempOutputStream = try SecureOutputStream(stream: tempOutputStream, scr: try SecureContentReference(json: ref))
                 }
                 self.outputStream = tempOutputStream
@@ -112,12 +134,21 @@ class DownloadFileOperation : NSObject, URLSessionDataDelegate {
     
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         self.outputStream?.close()
+        self.cancel()
         if let error = error {
             self.downloadError(error)
         }
         else {
+            let finalURL: URL
+            if shouldDecryptOnCompletion,
+                let decryptedFileURL = self.decrypt() {
+                finalURL = decryptedFileURL
+            }
+            else {
+                finalURL = self.target
+            }
             self.queue.async {
-                self.completionHandler(Result.success(self.target))
+                self.completionHandler(Result.success(finalURL))
             }
         }
     }
@@ -136,3 +167,53 @@ extension OutputStream {
     }
 }
 
+extension DownloadFileOperation: WebexCancellableTask {
+    func cancel() {
+        downloadSeesion?.invalidateAndCancel()
+    }
+}
+
+//MARK: - Decryption
+
+private extension DownloadFileOperation {
+    func decrypt() -> URL? {
+        do {
+            guard let inputStream = InputStream(url: self.target) else {
+                return nil
+            }
+            var decryptedFileURL = self.target.deletingLastPathComponent()
+            decryptedFileURL = decryptedFileURL.appendingPathComponent(self.fileName!)
+            var outputStream = OutputStream(toFileAtPath: decryptedFileURL.path, append: false)
+            if let ref = self.secureContentRef {
+                outputStream = try SecureOutputStream(stream: outputStream, scr: try SecureContentReference(json: ref))
+            }
+            else {
+                return nil
+            }
+            inputStream.open()
+            outputStream?.open()
+            
+            let bufferSize = 1024
+            let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+            while inputStream.hasBytesAvailable {
+                let read = inputStream.read(buffer, maxLength: bufferSize)
+                if read < 0 {
+                    throw inputStream.streamError!
+                }
+                else if read == 0 {
+                    break
+                }
+                outputStream?.write(buffer, maxLength: bufferSize)
+            }
+            
+            inputStream.close()
+            outputStream?.close()
+            try FileManager.default.removeItem(at: self.target)
+            return decryptedFileURL
+        }
+        catch {
+            print("Error while decryption occured: \(error)")
+            return nil
+        }
+    }
+}
