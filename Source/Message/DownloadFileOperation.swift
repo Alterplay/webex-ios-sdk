@@ -139,16 +139,20 @@ class DownloadFileOperation : NSObject, URLSessionDataDelegate {
             self.downloadError(error)
         }
         else {
-            let finalURL: URL
-            if shouldDecryptOnCompletion,
-                let decryptedFileURL = self.decrypt() {
-                finalURL = decryptedFileURL
+            if !shouldDecryptOnCompletion {
+                self.queue.async {
+                    self.completionHandler(Result.success(self.target))
+                }
+            }
+            else if let decryptedFileURL = self.decrypt() {
+                self.queue.async {
+                    self.completionHandler(Result.success(self.decryptedFileURL))
+                }
             }
             else {
-                finalURL = self.target
-            }
-            self.queue.async {
-                self.completionHandler(Result.success(finalURL))
+                self.queue.async {
+                    self.completionHandler(Result.failure(downloadError()))
+                }
             }
         }
     }
@@ -177,12 +181,17 @@ extension DownloadFileOperation: WebexCancellableTask {
 
 private extension DownloadFileOperation {
     func decrypt() -> URL? {
+        defer {
+            try? FileManager.default.removeItem(at: self.target)
+        }
         do {
             guard let inputStream = InputStream(url: self.target) else {
                 return nil
             }
+            
             var decryptedFileURL = self.target.deletingLastPathComponent()
             decryptedFileURL = decryptedFileURL.appendingPathComponent(self.fileName!)
+            
             var outputStream = OutputStream(toFileAtPath: decryptedFileURL.path, append: false)
             if let ref = self.secureContentRef {
                 outputStream = try SecureOutputStream(stream: outputStream, scr: try SecureContentReference(json: ref))
@@ -190,30 +199,40 @@ private extension DownloadFileOperation {
             else {
                 return nil
             }
-            inputStream.open()
-            outputStream?.open()
-            
-            let bufferSize = 1024
-            let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
-            while inputStream.hasBytesAvailable {
-                let read = inputStream.read(buffer, maxLength: bufferSize)
-                if read < 0 {
-                    throw inputStream.streamError!
-                }
-                else if read == 0 {
-                    break
-                }
-                outputStream?.write(buffer, maxLength: bufferSize)
-            }
-            
-            inputStream.close()
-            outputStream?.close()
-            try FileManager.default.removeItem(at: self.target)
+            try outputStream?.write(fromInputStrem: inputStream)
             return decryptedFileURL
         }
         catch {
             print("Error while decryption occured: \(error)")
             return nil
+        }
+    }
+}
+
+extension OutputStream {
+    func write(fromInputStrem inputStream: InputStream) throws {
+        inputStream.open()
+        open()
+        
+        defer {
+            inputStream.close()
+            close()
+        }
+        
+        let bufferSize = 1024
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+        while inputStream.hasBytesAvailable {
+            let read = inputStream.read(buffer, maxLength: bufferSize)
+            if read < 0 {
+                throw inputStream.streamError!
+            }
+            else if read == 0 {
+                break
+            }
+            write(buffer, maxLength: bufferSize)
+            if let error = streamError {
+                throw error
+            }
         }
     }
 }
