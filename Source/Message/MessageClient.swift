@@ -521,11 +521,12 @@ public class MessageClient {
     ///
     /// - parameter file: The RemoteFile object need to be downloaded. Use `Message.remoteFiles` to get the references.
     /// - parameter to: The local file directory for saving dwonloaded file attahement.
+    /// - parameter fileName: By passing fileName you take responsibility to ensure that the fileName is unique on disk. If the parameter is not nil, the file will be decrypted after full download. This is necessary to support resuming downloads. 
     /// - parameter progressHandler: The download progress indicator.
     /// - parameter completionHandler: A closure to be executed once the download is completed. The URL contains the path to the downloded file.
     /// - returns: Void
     /// - since: 1.4.0
-    public func downloadFile(_ file: RemoteFile, to: URL? = nil, progressHandler: ((Double)->Void)? = nil, completionHandler: @escaping (Result<URL>) -> Void) {
+    public func downloadFile(_ file: RemoteFile, to: URL? = nil, fileName: String? = nil, progressHandler: ((Double)->Void)? = nil, completionHandler: @escaping (Result<URL>) -> Void, cancelableHandler:((WebexCancellableTask) -> Void)?) {
         self.doSomethingAfterRegistered { error in
             if let error = error {
                 DispatchQueue.main.async {
@@ -541,10 +542,12 @@ public class MessageClient {
                                                           secureContentRef: file.secureContentRef,
                                                           thnumnail: false,
                                                           target: to,
+                                                          fileName: fileName,
                                                           queue: nil,
                                                           progressHandler: progressHandler,
                                                           completionHandler: completionHandler)
                     operation.run()
+                    cancelableHandler?(operation)
                 }
                 else {
                     completionHandler(Result.failure(MSGError.downloadError))
