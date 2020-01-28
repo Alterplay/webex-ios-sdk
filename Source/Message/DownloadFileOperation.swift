@@ -43,7 +43,7 @@ class DownloadFileOperation : NSObject, URLSessionDataDelegate {
     
     private let shouldDecryptOnCompletion: Bool
 
-    init(authenticator: Authenticator, uuid: String, source: String, displayName: String?, secureContentRef: String?, thnumnail: Bool, target: URL?, fileName: String?, queue: DispatchQueue?, progressHandler: ((Double) -> Void)?, completionHandler: @escaping ((Result<URL>) -> Void)) {
+    init(authenticator: Authenticator, uuid: String, source: String, displayName: String?, secureContentRef: String?, thnumnail: Bool, target: URL?, fileName: String? = nil, queue: DispatchQueue?, progressHandler: ((Double) -> Void)?, completionHandler: @escaping ((Result<URL>) -> Void)) {
         self.authenticator = authenticator
         self.source = source
         self.secureContentRef = secureContentRef
@@ -146,13 +146,11 @@ class DownloadFileOperation : NSObject, URLSessionDataDelegate {
             }
             else if let decryptedFileURL = self.decrypt() {
                 self.queue.async {
-                    self.completionHandler(Result.success(self.decryptedFileURL))
+                     self.completionHandler(Result.success(decryptedFileURL))
                 }
             }
             else {
-                self.queue.async {
-                    self.completionHandler(Result.failure(downloadError()))
-                }
+                downloadError()
             }
         }
     }
