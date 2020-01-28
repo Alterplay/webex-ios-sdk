@@ -521,6 +521,7 @@ public class MessageClient {
     ///
     /// - parameter file: The RemoteFile object need to be downloaded. Use `Message.remoteFiles` to get the references.
     /// - parameter to: The local file directory for saving dwonloaded file attahement.
+    /// - parameter fileName: By passing fileName you take responsibility to ensure that the fileName is unique on disk. If the parameter is not nil, the file will be decrypted after full download. This is necessary to support resuming downloads. 
     /// - parameter progressHandler: The download progress indicator.
     /// - parameter completionHandler: A closure to be executed once the download is completed. The URL contains the path to the downloded file.
     /// - returns: Void
