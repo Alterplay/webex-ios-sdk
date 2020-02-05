@@ -1078,7 +1078,7 @@ public class MessageClient {
 extension Date {
     
     var iso8601String: String {
-        return Timestamp.iSO8601FullFormatterInUTC.string(from: self.addingTimeInterval(-0.1))
+        return Timestamp.iSO8601FullFormatterInUTC.string(from: self.addingTimeInterval(-0.001))
     }
     
     static func fromISO860(_ string: String) -> Date? {
