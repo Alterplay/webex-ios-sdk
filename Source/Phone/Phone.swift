@@ -934,7 +934,8 @@ public class Phone {
     
     @objc func onApplicationDidEnterBackground() {
         SDKLogger.shared.info("Application did enter background")
-        self.disconnectFromWebSocket()
+        // self.disconnectFromWebSocket()
+        // Leave websocket connected for CallKit integration
     }
     
     private func connectToWebSocket() {
