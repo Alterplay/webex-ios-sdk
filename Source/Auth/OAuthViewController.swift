@@ -51,7 +51,7 @@ class OAuthViewController: UIViewController, WKNavigationDelegate {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .white
-        title = "Link to Webex"
+        title = "Connect Webex"
         webView = WKWebView(frame: view.bounds)
         webView.autoresizingMask = [.flexibleHeight, .flexibleWidth]
         webView.navigationDelegate = self
