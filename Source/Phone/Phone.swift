@@ -134,6 +134,10 @@ public class Phone {
         return me?.id
     }
     
+    public var myEmail: String? {
+        return me?.emails?.first?.toString()
+    }
+    
     public func isMe(personID id: String) -> Bool {
         guard let me = me else {
             return false
