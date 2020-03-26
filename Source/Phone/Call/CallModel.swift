@@ -1,4 +1,4 @@
-// Copyright 2016-2019 Cisco Systems Inc
+// Copyright 2016-2020 Cisco Systems Inc
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -89,7 +89,7 @@ struct CallModel {
     }
     
     var isRemoteVideoMuted: Bool {
-        for participant in self.participants ?? [] where participant.id != myself?.id && participant.state == CallMembership.State.joined && participant.isCIUser() {
+        for participant in self.participants ?? [] where participant.id != myself?.id && participant.isJoined && participant.isCIUser {
             if participant.status?.videoStatus != "RECVONLY" && participant.status?.videoStatus != "INACTIVE" {
                 return false
             }
@@ -98,7 +98,7 @@ struct CallModel {
     }
     
     var isRemoteAudioMuted: Bool {
-        for participant in self.participants ?? [] where participant.id != myself?.id && participant.state == CallMembership.State.joined && participant.isCIUser() {
+        for participant in self.participants ?? [] where participant.id != myself?.id && participant.isJoined && participant.isCIUser {
             if participant.status?.audioStatus != "RECVONLY" && participant.status?.audioStatus != "INACTIVE" {
                 return false
             }

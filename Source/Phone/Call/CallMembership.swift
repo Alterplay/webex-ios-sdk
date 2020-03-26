@@ -1,4 +1,4 @@
-// Copyright 2016-2019 Cisco Systems Inc
+// Copyright 2016-2020 Cisco Systems Inc
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -39,8 +39,21 @@ public struct CallMembership {
         case left
         /// The person has declined the call.
         case declined
+        /// The person is waiting in the lobby about the call.
+        /// - since: 2.4.0
+        case waiting
+        
+        static func from(participant: ParticipantModel) -> CallMembership.State {
+            guard let state = participant.state else {
+                return .idle
+            }
+            if participant.isInLobby {
+                return .waiting
+            }
+            return State(rawValue: state.rawValue) ?? .idle
+        }
     }
-    
+        
     /// True if the person is the initiator of the call.
     ///
     /// - since: 1.2.0
@@ -50,12 +63,12 @@ public struct CallMembership {
     ///
     /// - since: 1.2.0
     public private(set) var personId: String?
-
+    
     /// The status of the person in this `CallMembership`.
     ///
     /// - since: 1.2.0
     public var state: State {
-        return self.model.state ?? .idle
+        return State.from(participant: self.model)
     }
     
     /// The email address of the person in this `CallMembership`.
@@ -149,6 +162,6 @@ public struct CallMembership {
     }
     
     func isMediaActive() -> Bool {
-        return model.state == State.joined
+        return model.state == ParticipantModel.State.joined
     }
 }

@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name = "WebexSDK"
-  s.version = "2.3.0"
+  s.version = "2.4.0"
   s.summary = "Webex iOS SDK"
   s.homepage = "https://developer.webex.com"
   s.license = "MIT"
@@ -18,7 +18,7 @@ Pod::Spec.new do |s|
   s.dependency 'ObjectMapper', '~> 3.3'
   s.dependency 'AlamofireObjectMapper', '~> 5.1'
   s.dependency 'SwiftyJSON', '~> 4.1'
-  s.dependency 'Starscream', '= 3.0.5'
+  s.dependency 'Starscream', '= 4.0.0'
   s.dependency 'KeychainAccess', '~> 3.1'
 
 end

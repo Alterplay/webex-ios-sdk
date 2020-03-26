@@ -1,4 +1,4 @@
-// Copyright 2016-2019 Cisco Systems Inc
+// Copyright 2016-2020 Cisco Systems Inc
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -44,7 +44,7 @@ struct MediaShareModel {
     struct MediaShareFloor {
         var beneficiary: ParticipantModel?
         var disposition: ShareFloorDisposition?
-        var granted: String?
+        var granted: String? = ""
         var released: String?
         var requested: String?
         var requester: ParticipantModel?

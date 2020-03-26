@@ -1,4 +1,4 @@
-// Copyright 2016-2019 Cisco Systems Inc
+// Copyright 2016-2020 Cisco Systems Inc
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -180,6 +180,10 @@ public class Call {
         case sendingAudio(CallMembership)
         /// The person in the membership started screen sharing.
         case sendingScreenShare(CallMembership)
+        /// The person in the membership is waiting in the lobby.
+        ///
+        /// - since: 2.4.0
+        case waiting(CallMembership, WaitReason)
     }
     
     /// The enumeration of iOS broadcasting events.
@@ -200,6 +204,20 @@ public class Call {
         case dtmf
     }
     
+    /// The reasons for the call is waiting.
+    ///
+    /// - since: 2.4.0
+    public enum WaitReason {
+        /// Waiting in the lobby for the meeting to start.
+        case meetingNotStart
+        /// Waiting in the lobby for admiting by hosts
+        case waitingforAdmitting
+        
+        static func from(call: Call) -> WaitReason {
+            return call.model.fullState?.active == true ? .waitingforAdmitting : .meetingNotStart
+        }
+    }
+    
     /// Callback when remote participant(s) is ringing.
     ///
     /// - since: 1.2.0
@@ -209,6 +227,22 @@ public class Call {
                 if let block = self.onRinging, self.status == CallStatus.ringing {
                     DispatchQueue.main.async {
                         block()
+                    }
+                }
+                self.device.phone.queue.yield()
+            }
+        }
+    }
+    
+    /// Callback when the call is waiting.
+    ///
+    /// - since: 2.4.0
+    public var onWaiting: ((WaitReason) -> Void)? {
+        didSet {
+            self.device.phone.queue.sync {
+                if let block = self.onWaiting, self.status == CallStatus.waiting {
+                    DispatchQueue.main.async {
+                        block(Call.WaitReason.from(call: self))
                     }
                 }
                 self.device.phone.queue.yield()
@@ -232,7 +266,7 @@ public class Call {
             }
         }
     }
-    
+        
     /// Callback when this `Call` is disconnected (hangup, cancelled, get declined or other self device pickup the call).
     ///
     /// - since: 1.2.0
@@ -312,6 +346,7 @@ public class Call {
         }
         set {
             self.mediaSession.videoMuted = !newValue
+            _sendingVideo = newValue
         }
     }
     
@@ -324,6 +359,7 @@ public class Call {
         }
         set {
             self.mediaSession.audioMuted = !newValue
+            _sendingAudio = newValue
         }
     }
     
@@ -339,6 +375,11 @@ public class Call {
         }
     }
     
+    private var _sendingVideo:Bool = true
+    private var _sendingAudio:Bool = true
+    private var _receivingVideo:Bool = true
+    private var _receivingAudio:Bool = true
+    
     /// True if the local party of this `Call` is receiving video. Otherwise, false.
     ///
     /// - since: 1.2.0
@@ -348,6 +389,7 @@ public class Call {
         }
         set {
             self.mediaSession.videoOutputMuted = !newValue
+            _receivingVideo = newValue
         }
     }
     
@@ -360,6 +402,7 @@ public class Call {
         }
         set {
             self.mediaSession.audioOutputMuted = !newValue
+            _receivingAudio = newValue
         }
     }
     
@@ -493,7 +536,11 @@ public class Call {
                 //update media session
                 self.mediaSession.updateMedia(mediaType:MediaSessionWrapper.MediaType.video(self.videoRenderViews))
                 //update locus local medias
-                self.device.phone.update(call: self, sendingAudio: self.sendingAudio, sendingVideo: self.sendingVideo,localSDP: self.mediaSession.getLocalSdp())
+                self.device.phone.update(call: self, sendingAudio: self.sendingAudio, sendingVideo: self.sendingVideo, localSDP: self.mediaSession.getLocalSdp()) { (error) in
+                    if error != nil {
+                        SDKLogger.shared.error("update media failed")
+                    }
+                }
             }
         }
     }
@@ -511,7 +558,11 @@ public class Call {
                 //update media session
                 self.mediaSession.updateMedia(mediaType:MediaSessionWrapper.MediaType.screenShare(self.screenShareRenderView))
                 //update locus local medias
-                self.device.phone.update(call: self, sendingAudio: self.sendingAudio, sendingVideo: self.sendingVideo,localSDP: self.mediaSession.getLocalSdp())
+                self.device.phone.update(call: self, sendingAudio: self.sendingAudio, sendingVideo: self.sendingVideo, localSDP: self.mediaSession.getLocalSdp()) { (error) in
+                    if error != nil {
+                        SDKLogger.shared.error("update media failed")
+                    }
+                }
                 //join or leave screen share
                 if let granted = self.model.screenMediaShare?.shareFloor?.granted {
                     if self.screenShareRenderView != nil {
@@ -639,6 +690,16 @@ public class Call {
         return nil
     }
     
+    private var keepAliveTimer: Timer?
+    
+    var keepAliveUrl: String? {
+        return self.model.myself?[device: self.device.deviceUrl]?.mediaConnections?.first?.keepAliveUrl ?? self.model.mediaConnections?.first?.keepAliveUrl
+    }
+    
+    private var keepAliveSecs: Int? {
+        return self.model.myself?[device: self.device.deviceUrl]?.mediaConnections?.first?.keepAliveSecs ?? self.model.mediaConnections?.first?.keepAliveSecs
+    }
+    
     init(model: CallModel, device: Device, media: MediaSessionWrapper, direction: Direction, group: Bool, uuid: UUID?) {
         self.direction = direction
         self.isGroup = group
@@ -709,6 +770,17 @@ public class Call {
     /// - see: see CallStatus
     public func hangup(completionHandler: @escaping (Error?) -> Void) {
         self.device.phone.hangup(call: self, completionHandler: completionHandler)
+    }
+    
+    /// Admit CallMemberships into the meeting from the lobby.
+    /// This should be called by moderator.
+    ///
+    /// - parameter memberships: the call memberships that waiting in the lobby.
+    /// - parameter completionHandler: A closure to be executed when completed, with error if the invocation is illegal or failed, otherwise nil.
+    /// - returns: Void
+    /// - since: 2.4.0
+    public func letIn(_ memberships: [CallMembership], completionHandler: @escaping (Error?) -> Void) {
+        self.device.phone.letIn(call: self, memberships: memberships, completionHandler: completionHandler)
     }
     
     /// Sends feedback for this call to Cisco Webex team.
@@ -911,16 +983,41 @@ public class Call {
     }
     
     func updateMedia(sendingAudio: Bool, sendingVideo: Bool) {
-        self.device.phone.update(call: self, sendingAudio: sendingAudio, sendingVideo: sendingVideo)
+        self.device.phone.update(call: self, sendingAudio: sendingAudio, sendingVideo: sendingVideo) { (error) in
+            if error != nil {
+                SDKLogger.shared.error("update media failed")
+            }
+        }
+    }
+    
+    private func updateSdp(completionHandler: @escaping (Error?) -> Void) {
+        self.device.phone.update(call: self, sendingAudio: self.sendingAudio, sendingVideo: self.sendingVideo, localSDP:self.mediaSession.getLocalSdp(), completionHandler: completionHandler)
+    }
+    
+    func startKeepAlive() {
+        guard let second = self.keepAliveSecs else {
+            return
+        }
+        DispatchQueue.global().async {
+            self.keepAliveTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(second/2), repeats: true, block: { (timer) in
+                self.device.phone.keepAlive(call: self)
+            })
+            RunLoop.current.run()
+        }
+    }
+    
+    func stopKeepAlive() {
+        self.keepAliveTimer?.invalidate()
+        self.keepAliveTimer = nil
     }
     
     func startMedia() {
-        if let remoteSDP = self.remoteSDP {
-            self.mediaSession.setRemoteSdp(remoteSDP)
-        }
-        else {
+        guard let remoteSDP = self.remoteSDP else {
             SDKLogger.shared.error("Failure: remoteSdp is nil")
+            return
         }
+        
+        self.mediaSession.setRemoteSdp(remoteSDP)
         self.mediaSession.onBroadcasting = {
             isBroadcasting in
             DispatchQueue.main.async {
@@ -1145,7 +1242,7 @@ public class Call {
     
     private func doCallModel(_ model: CallModel) {
         self.model = model
-        if let participants = self.model.participants?.filter({ $0.isCIUser() }) {
+        if let participants = self.model.participants?.filter({ $0.isCIUser }) {
             let oldMemberships = self.memberships
             var newMemberships = [CallMembership]()
             var onCallMembershipChanges = [CallMembershipChangedEvent]()
@@ -1164,11 +1261,16 @@ public class Call {
                     if membership.sendingVideo != tempSendingVideo {
                         onCallMembershipChanges.append(CallMembershipChangedEvent.sendingVideo(membership))
                     }
+                    
                     newMemberships.append(membership)
                 }
                 else {
-                    newMemberships.append(CallMembership(participant: participant, call: self))
-                    //TODO participant add event?
+                    let membership = CallMembership(participant: participant, call: self)
+                    onCallMembershipChanges.append(contentsOf: checkMembershipChangeEventFor(membership))
+                    onCallMembershipChanges.append(CallMembershipChangedEvent.sendingAudio(membership))
+                    onCallMembershipChanges.append(CallMembershipChangedEvent.sendingVideo(membership))
+                    
+                    newMemberships.append(membership)
                 }
             }
             //TODO participant remove event?
@@ -1185,6 +1287,26 @@ public class Call {
         
         self.updateAuxStreamCount()
         self.status.handle(model: self.model, for: self)
+        
+        if self.status != .waiting {
+            self.stopKeepAlive()
+        }
+        
+        if (self.status == .connected || self.status == .ringing) && self.mediaSession.status != .running {
+            self.updateSdp { (error) in
+                if error == nil && self.mediaSession.status != .running {
+                    self.startMedia()
+                    self.sendingVideo = self._sendingVideo
+                    self.sendingAudio = self._sendingAudio
+                    self.receivingVideo = self._receivingVideo
+                    self.receivingAudio = self._receivingAudio
+                    if self.status == .connected {
+                        self.onConnected?()
+                    }
+                }
+            }
+        }
+        
     }
     
     private func checkMembershipChangeEventFor(_ membership: CallMembership) -> [CallMembershipChangedEvent] {
@@ -1205,6 +1327,9 @@ public class Call {
         }
         else if membership.state == CallMembership.State.declined {
             onCallMembershipChanges.append(CallMembershipChangedEvent.declined(membership))
+        }
+        else if membership.state == CallMembership.State.waiting {
+            onCallMembershipChanges.append(CallMembershipChangedEvent.waiting(membership, Call.WaitReason.from(call: self)))
         }
         return onCallMembershipChanges
     }

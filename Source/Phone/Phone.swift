@@ -1,4 +1,4 @@
-// Copyright 2016-2019 Cisco Systems Inc
+// Copyright 2016-2020 Cisco Systems Inc
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -157,7 +157,7 @@ public class Phone {
         case leave(Call, ServiceResponse<CallModel>, (Error?) -> Void)
         case reject(Call, ServiceResponse<Any>, (Error?) -> Void)
         case alert(Call, ServiceResponse<Any>, (Error?) -> Void)
-        case update(Call, ServiceResponse<CallModel>)
+        case update(Call, ServiceResponse<CallModel>, ((Error?) -> Void)?)
         case updateMediaShare(Call, ServiceResponse<Any>, (Error?) -> Void)
     }
 
@@ -574,17 +574,18 @@ public class Phone {
         }
     }
     
-    func update(call: Call, sendingAudio: Bool, sendingVideo: Bool, localSDP:String? = nil) {
+    func update(call: Call, sendingAudio: Bool, sendingVideo: Bool, localSDP:String? = nil, completionHandler: @escaping (Error?) -> Void) {
         DispatchQueue.main.async {
             let reachabilities = self.reachability.feedback?.reachabilities
             self.queue.sync {
-                guard let url = call.model.myself?.mediaBaseUrl, let sdp = call.model.mediaConnections?.first?.localSdp?.sdp, let mediaID = call.model.myself?[device: call.device.deviceUrl]?.mediaConnections?.first?.mediaId else {
+                guard let url = call.model.myself?.mediaBaseUrl, let sdp = call.model.mediaConnections?.first?.localSdp?.sdp ?? localSDP, let mediaID = call.model.myself?[device: call.device.deviceUrl]?.mediaConnections?.first?.mediaId ?? call.model.mediaConnections?.first?.mediaId else {
+                    completionHandler(WebexError.serviceFailed(code: -7000, reason: "Missing media data"))
                     self.queue.yield()
                     return
                 }
                 let media = MediaModel(sdp: localSDP == nil ? sdp:localSDP!, audioMuted: !sendingAudio, videoMuted: !sendingVideo, reachabilities: reachabilities)
                 self.client.update(url,by: mediaID,by: call.device, localMedia: media, queue: self.queue.underlying) { res in
-                    self.doLocusResponse(LocusResult.update(call, res))
+                    self.doLocusResponse(LocusResult.update(call, res, completionHandler))
                     self.queue.yield()
                 }
             }
@@ -603,7 +604,38 @@ public class Phone {
                 SDKLogger.shared.debug("Requesting full sync Delta for locus: \(syncUrl)")
             }
             self.client.fetch(syncUrl, queue: self.queue.underlying) { res in
-                self.doLocusResponse(LocusResult.update(call, res))
+                self.doLocusResponse(LocusResult.update(call, res, nil))
+                self.queue.yield()
+            }
+        }
+    }
+    
+    func letIn(call:Call, memberships:[CallMembership], completionHandler: @escaping (Error?) -> Void) {
+        self.queue.sync {
+            if let url = call.model.locusUrl {
+                self.client.letIn(url, memberships: memberships, queue: self.queue.underlying) { res in
+                    self.doLocusResponse(LocusResult.update(call, res, completionHandler))
+                    self.queue.yield()
+                }
+            }
+            else {
+                SDKLogger.shared.error("Failure: Missing call URL")
+                DispatchQueue.main.async {
+                    completionHandler(WebexError.serviceFailed(code: -7000, reason: "Missing call URL"))
+                }
+                self.queue.yield()
+            }
+        }
+    }
+    
+    func keepAlive(call:Call) {
+        self.queue.sync {
+            if let keepAliveUrl = call.keepAliveUrl {
+                self.client.keepAlive(keepAliveUrl, queue: self.queue.underlying) { res in
+                    self.queue.yield()
+                }
+            }else {
+                SDKLogger.shared.error("Failure: Missing keepAliveUrl")
                 self.queue.yield()
             }
         }
@@ -680,7 +712,11 @@ public class Phone {
                     }
                     self.add(call: call)
                     DispatchQueue.main.async {
-                        call.startMedia()
+                        if call.model.myself?.isInLobby == true {
+                            call.startKeepAlive()
+                        }else {
+                            call.startMedia()
+                        }
                         completionHandler(Result.success(call))
                     }
                 }
@@ -751,13 +787,19 @@ public class Phone {
                     completionHandler(error)
                 }
             }
-        case .update(let call, let res):
+        case .update(let call, let res, let completionHandler):
             switch res.result {
             case .success(let model):
                 SDKLogger.shared.debug("Receive update media locus response: \(model.toJSONString(prettyPrint: self.debug) ?? nilJsonStr)")
                 call.update(model: model)
+                DispatchQueue.main.async {
+                    completionHandler?(nil)
+                }
             case .failure(let error):
                 SDKLogger.shared.error("Failure update media ", error: error)
+                DispatchQueue.main.async {
+                    completionHandler?(error)
+                }
             }
         case .updateMediaShare( _, let res, let completionHandler):
             switch res.result {

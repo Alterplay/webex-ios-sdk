@@ -1,4 +1,4 @@
-// Copyright 2016-2019 Cisco Systems Inc
+// Copyright 2016-2020 Cisco Systems Inc
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -42,14 +42,17 @@ public enum CallStatus {
     case connected
     /// The call is terminated.
     case disconnected
+    /// The call is waiting.
+    /// - since: 2.4.0
+    case waiting
     
     func handle(model: CallModel, for call: Call) {
         guard let local = model.myself else {
             return;
         }
         switch self {
-        case .initiated, .ringing:
-            handelInitiateAndRingingFor(call, local)
+        case .initiated, .ringing, .waiting:
+            handleNonStartFor(call, local)
         case .connected:
             if call.isGroup {
                 if local.isLefted(device: call.device.deviceUrl)  {
@@ -70,7 +73,7 @@ public enum CallStatus {
     }
 }
 
-private func handelInitiateAndRingingFor(_ call: Call, _ participant: ParticipantModel) {
+private func handleNonStartFor(_ call: Call, _ participant: ParticipantModel) {
     if call.direction == Call.Direction.incoming {
         if call.isRemoteJoined {
             if participant.isJoined(by: call.device.deviceUrl) {
@@ -124,6 +127,11 @@ private func handelInitiateAndRingingFor(_ call: Call, _ participant: Participan
                 else if call.isRemoteDeclined {
                     call.end(reason: Call.DisconnectReason.remoteDecline)
                 }
+            }
+        } else if participant.isInLobby {
+            call.status = .waiting
+            DispatchQueue.main.async {
+                call.onWaiting?(Call.WaitReason.from(call: call))
             }
         }
     }

@@ -1,4 +1,4 @@
-// Copyright 2016-2019 Cisco Systems Inc
+// Copyright 2016-2020 Cisco Systems Inc
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,12 +24,30 @@ import ObjectMapper
 struct ParticipantModel {
     
     struct DeviceModel {
+                
+        struct IntentModel {
+            
+            enum IntentType: String {
+                case none
+                case join
+                case leave
+                case wait
+                case dialog
+                case unknown
+            }
+            
+            var id: String?
+            var type: IntentType?
+            var associatedWith: String?
+        }
+        
         var url: String?
         var deviceType: String?
         var featureToggles: String?
         var mediaConnections: [MediaConnectionModel]?
         var state: String?
         var callLegId: String?
+        var intent: IntentModel?
     }
     
     struct StatusModel {
@@ -38,10 +56,18 @@ struct ParticipantModel {
         var csis: [UInt]?
     }
     
+    enum State: String {
+        case idle
+        case notified
+        case joined
+        case left
+        case declined
+    }
+    
     var isCreator: Bool?
     var id: String?
     var url: String?
-    var state: CallMembership.State?
+    var state: ParticipantModel.State?
     var type: String?
     var person: PersonModel?
     var status: ParticipantModel.StatusModel?
@@ -55,15 +81,19 @@ struct ParticipantModel {
     var removed: Bool?
     
     var isJoined: Bool {
-        return self.state == CallMembership.State.joined
+        return self.state == .joined
     }
     
     var isDeclined: Bool {
-        return self.state == CallMembership.State.declined
+        return self.state == .declined
     }
     
     var isLeft: Bool {
-        return self.state == CallMembership.State.left
+        return self.state == .left
+    }
+    
+    var isIdle:Bool {
+        return self.state == .idle
     }
 
     func isLefted(device url: URL) -> Bool{
@@ -78,11 +108,22 @@ struct ParticipantModel {
         return isDeclined && self.deviceUrl == by.absoluteString
     }
     
-    func isCIUser() -> Bool {
-        if let typeString = self.type, typeString == "USER" || typeString == "RESOURCE_ROOM"{
+    var isCIUser: Bool {
+        if let typeString = self.type, typeString == "USER" || typeString == "RESOURCE_ROOM" {
             return true
         }
-        
+        return false
+    }
+    
+    var isInLobby: Bool {
+        guard self.isIdle, let devices = self.devices else {
+            return false
+        }
+        for device in devices {
+            if device.intent?.type == ParticipantModel.DeviceModel.IntentModel.IntentType.wait {
+                return true
+            }
+        }
         return false
     }
     
@@ -136,14 +177,14 @@ extension ParticipantModel: Mappable {
     
     class ParticipantStateTransform: TransformType {
         
-        func transformFromJSON(_ value: Any?) -> CallMembership.State? {
+        func transformFromJSON(_ value: Any?) -> ParticipantModel.State? {
             guard let state = value as? String else {
                 return nil
             }
-            return CallMembership.State(rawValue: state.lowercased())
+            return ParticipantModel.State(rawValue: state.lowercased())
         }
         
-        func transformToJSON(_ value: CallMembership.State?) -> String? {
+        func transformToJSON(_ value: ParticipantModel.State?) -> String? {
             guard let state = value else {
                 return nil
             }
@@ -165,6 +206,7 @@ extension ParticipantModel.DeviceModel: Mappable {
         mediaConnections <- map["mediaConnections"]
         state <- map["state"]
         callLegId <- map["callLegId"]
+        intent <- map["intent"]
     }
 }
 
@@ -177,6 +219,34 @@ extension ParticipantModel.StatusModel: Mappable {
         audioStatus <- map["audioStatus"]
         videoStatus <- map["videoStatus"]
         csis <- map["csis"]
+    }
+}
+
+extension ParticipantModel.DeviceModel.IntentModel: Mappable {
+    init?(map: Map) {
+    }
+    
+    mutating func mapping(map: Map) {
+        id <- map["id"]
+        type <- (map["type"], DeviceIntentTransform())
+        associatedWith <- map["associatedWith"]
+    }
+    
+    class DeviceIntentTransform: TransformType {
+        
+        func transformFromJSON(_ value: Any?) -> ParticipantModel.DeviceModel.IntentModel.IntentType? {
+            guard let type = value as? String else {
+                return nil
+            }
+            return ParticipantModel.DeviceModel.IntentModel.IntentType(rawValue: type.lowercased()) ?? ParticipantModel.DeviceModel.IntentModel.IntentType.unknown
+        }
+        
+        func transformToJSON(_ value: ParticipantModel.DeviceModel.IntentModel.IntentType?) -> String? {
+            guard let type = value else {
+                return nil
+            }
+            return type.rawValue
+        }
     }
 }
 

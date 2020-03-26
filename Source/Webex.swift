@@ -1,4 +1,4 @@
-// Copyright 2016-2019 Cisco Systems Inc
+// Copyright 2016-2020 Cisco Systems Inc
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -62,7 +62,7 @@ public class Webex {
     /// The version number of this Cisco Webex iOS SDK.
     ///
     /// - since: 1.2.0
-    public static let version = "2.3.0"
+    public static let version = "2.4.0"
     
     /// The logger for this SDK.
     ///
