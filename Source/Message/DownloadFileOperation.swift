@@ -59,18 +59,18 @@ class DownloadFileOperation : NSObject, URLSessionDataDelegate {
             try? FileManager.default.createDirectory(at: path, withIntermediateDirectories: false, attributes: nil)
             self.target = path
         }
-         self.fileName = fileName
-               var name: String
-               if let fileName = fileName {
-                   name = "encrypted-\(fileName)"
-                   shouldDecryptOnCompletion = true
-               }
-               else {
-                   shouldDecryptOnCompletion = false
-                   name = UUID().uuidString + "-" + (displayName ?? Date().iso8601String)
-                   if (thnumnail) {
-                       name = "thumb-" + name
-                   }
+        self.fileName = fileName
+        var name: String
+        if let fileName = fileName {
+            name = "encrypted-\(fileName)"
+            shouldDecryptOnCompletion = true
+        }
+        else {
+            shouldDecryptOnCompletion = false
+            name = UUID().uuidString + "-" + (displayName ?? Date().iso8601String)
+            if (thnumnail) {
+                name = "thumb-" + name
+            }
         }
         self.target = self.target.appendingPathComponent(name, isDirectory: false)
     }
@@ -197,7 +197,16 @@ private extension DownloadFileOperation {
             else {
                 return nil
             }
-            try outputStream?.write(fromInputStrem: inputStream)
+            
+            var fileSize: UInt64 = 0
+            let attributes = try? FileManager.default.attributesOfItem(atPath: self.target.path)
+            fileSize = attributes?[.size] as? UInt64 ?? UInt64(0)
+            var bufferSize: Int = 1024
+            if bufferSize > fileSize {
+                bufferSize = Int(fileSize)
+            }
+
+            try outputStream?.write(fromInputStrem: inputStream, bufferSize: bufferSize)
             return decryptedFileURL
         }
         catch {
@@ -208,7 +217,7 @@ private extension DownloadFileOperation {
 }
 
 extension OutputStream {
-    func write(fromInputStrem inputStream: InputStream) throws {
+    func write(fromInputStrem inputStream: InputStream, bufferSize: Int) throws {
         inputStream.open()
         open()
         
@@ -217,7 +226,6 @@ extension OutputStream {
             close()
         }
         
-        let bufferSize = 1024
         let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
         while inputStream.hasBytesAvailable {
             let read = inputStream.read(buffer, maxLength: bufferSize)
