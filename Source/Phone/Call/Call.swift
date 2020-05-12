@@ -620,7 +620,7 @@ public class Call {
         return self.model.callUrl!
     }
     
-    let isGroup: Bool
+    public private(set) var isGroup: Bool
     
     let device: Device
     let mediaSession: MediaSessionWrapper
