@@ -321,7 +321,7 @@ public class Phone {
                             if let device = self.devices.device {
                                 let media = MediaModel(sdp: localSDP, audioMuted: false, videoMuted: false, reachabilities: reachabilities)
                                 if target.isEndpoint {
-                                    self.client.create(target.address, by: device, localMedia: media, queue: self.queue.underlying) { res in
+                                    self.client.create(target.address, by: device, localMedia: media, layout: option.layout, queue: self.queue.underlying) { res in
                                         self.doLocusResponse(LocusResult.call(target.isGroup, device, option.uuid, tempMediaContext, res, completionHandler))
                                         self.queue.yield()
                                     }
@@ -329,7 +329,7 @@ public class Phone {
                                 else {
                                     self.conversations.getLocusUrl(conversation: target.address, by: device, queue: self.queue.underlying) { res in
                                         if let url = res.result.data?.locusUrl {
-                                            self.client.join(url, by: device, localMedia: media, queue: self.queue.underlying) { resNew in
+                                            self.client.join(url, by: device, localMedia: media, layout: option.layout, queue: self.queue.underlying) { resNew in
                                                 self.doLocusResponse(LocusResult.call(target.isGroup, device, option.uuid, tempMediaContext, resNew, completionHandler))
                                                 self.queue.yield()
                                             }
@@ -486,7 +486,7 @@ public class Phone {
                 tempMediaContext.prepare(option: option, phone: self)
                 let media = MediaModel(sdp: tempMediaContext.getLocalSdp(), audioMuted: false, videoMuted: false, reachabilities: self.reachability.feedback?.reachabilities)
                 self.queue.sync {
-                    self.client.join(call.url, by: call.device, localMedia: media, queue: self.queue.underlying) { res in
+                    self.client.join(call.url, by: call.device, localMedia: media, layout: option.layout, queue: self.queue.underlying) { res in
                         self.doLocusResponse(LocusResult.join(call, res, completionHandler))
                         self.queue.yield()
                     }
@@ -578,7 +578,9 @@ public class Phone {
         DispatchQueue.main.async {
             let reachabilities = self.reachability.feedback?.reachabilities
             self.queue.sync {
-                guard let url = call.model.myself?.mediaBaseUrl, let sdp = call.model.mediaConnections?.first?.localSdp?.sdp ?? localSDP, let mediaID = call.model.myself?[device: call.device.deviceUrl]?.mediaConnections?.first?.mediaId ?? call.model.mediaConnections?.first?.mediaId else {
+                guard let url = call.model.myself?.mediaBaseUrl,
+                    let sdp = call.model.mediaConnections?.first?.localSdp?.sdp ?? localSDP,
+                    let mediaID = call.model.myself?[device: call.device.deviceUrl]?.mediaConnections?.first?.mediaId ?? call.model.mediaConnections?.first?.mediaId else {
                     completionHandler(WebexError.serviceFailed(code: -7000, reason: "Missing media data"))
                     self.queue.yield()
                     return

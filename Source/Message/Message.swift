@@ -164,10 +164,22 @@ public struct Message {
         return self.activity.files
     }
     
+    /// Returns the parent message for the reply message.
+    ///
+    /// - since: 2.5.0
+    public private(set) var parentId: String?
+    
+    /// Returns true for reply message.
+    ///
+    /// - since: 2.5.0
+    public private(set) var isReply: Bool
+    
     private let activity: ActivityModel
-        
+    
     init(activity: ActivityModel) {
         self.activity = activity
+        self.parentId = activity.parentId
+        self.isReply = activity.parentType == "reply"
         self.id = activity.uuid?.hydraFormat(for: .message)
         if self.activity.verb == ActivityModel.Verb.delete, let uuid = self.activity.objectUUID {
             self.id = uuid.hydraFormat(for: .message)

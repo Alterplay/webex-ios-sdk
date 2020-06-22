@@ -83,7 +83,10 @@ struct ActivityModel {
     
     private(set) var isModerator:Bool?
     
-    private(set) var parentUUID: String?
+    private(set) var parentId: String?
+    private(set) var parentActorId: String?
+    private(set) var parentType: String?
+    private(set) var parentPublished: Date?
 }
 
 extension ActivityModel : ImmutableMappable {
@@ -132,7 +135,10 @@ extension ActivityModel : ImmutableMappable {
         self.objectLocked = try? map.value("object.tags", using: LockedTransform())
         self.isModerator = try? map.value("object.roomProperties.isModerator", using: StringAndBoolTransform())
         
-        self.parentUUID = try? map.value("parent.id")
+        self.parentId = try? map.value("parent.id", using: IdentityTransform(for: IdentityType.message))
+        self.parentActorId = try? map.value("parent.actorId", using: IdentityTransform(for: IdentityType.people))
+        self.parentType = try? map.value("parent.type")
+        self.parentPublished = try? map.value("parent.published", using: CustomDateFormatTransform(formatString: "yyyy-MM-dd'T'HH:mm:ss.SSSZZZZZ"))
     }
     
     /// Mapping activity model to json format.
@@ -163,6 +169,10 @@ extension ActivityModel : ImmutableMappable {
         self.objectEmail >>> map["objectEmail"]
         self.objectOrgId >>> map["objectOrgId"]
         self.isModerator >>> map["isModerator"]
+        self.parentId >>> map["parentId"]
+        self.parentActorId >>> map["parentActorId"]
+        self.parentType >>> map["parentType"]
+        self.parentPublished?.longString >>> map["parentPublished"]
     }
 }
 
