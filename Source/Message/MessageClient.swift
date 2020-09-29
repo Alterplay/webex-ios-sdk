@@ -537,7 +537,7 @@ public class MessageClient {
     /// - parameter completionHandler: A closure to be executed once the download is completed. The URL contains the path to the downloded file.
     /// - returns: Void
     /// - since: 1.4.0
-    public func downloadFile(_ file: RemoteFile, to: URL? = nil, progressHandler: ((Double) -> Void)? = nil, completionHandler: @escaping (Result<URL>) -> Void) {
+    public func downloadFile(_ file: RemoteFile, to: URL? = nil, fileName: String? = nil, progressHandler: ((Double) -> Void)? = nil, completionHandler: @escaping (Result<URL>) -> Void, cancelableHandler:((WebexCancellableTask) -> Void)?) {
         self.doSomethingAfterRegistered { error in
             if let error = error {
                 DispatchQueue.main.async {
@@ -551,10 +551,12 @@ public class MessageClient {
                             scr: file.model.scrObject,
                             thnumnail: false,
                             target: to,
+                            fileName: fileName,
                             queue: nil,
                             progressHandler: progressHandler,
                             completionHandler: completionHandler)
                     operation.run()
+                    cancelableHandler?(operation)
                 } else {
                     DispatchQueue.main.async {
                         completionHandler(Result.failure(MSGError.downloadError))

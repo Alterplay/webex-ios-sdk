@@ -20,12 +20,17 @@
 import UIKit
 import Alamofire
 
+@objc public protocol WebexCancellableTask {
+    func cancel()
+}
+
 class DownloadFileOperation : NSObject, URLSessionDataDelegate {
     
     private let authenticator: Authenticator
     private let url: String
     private let scr: SecureContentReference?
     private var target: URL
+    private let fileName: String?
     private let queue: DispatchQueue
     private let progressHandler: ((Double) -> Void)?
     private let completionHandler : (Result<URL>) -> Void
@@ -33,8 +38,9 @@ class DownloadFileOperation : NSObject, URLSessionDataDelegate {
     private var downloadSeesion: URLSession?
     private var totalSize: UInt64?
     private var countSize: UInt64 = 0
+    private let shouldDecryptOnCompletion: Bool
 
-    init(authenticator: Authenticator, url: String, displayName: String?, scr: SecureContentReference?, thnumnail: Bool, target: URL?, queue: DispatchQueue?, progressHandler: ((Double) -> Void)?, completionHandler: @escaping (Result<URL>) -> Void) {
+    init(authenticator: Authenticator, url: String, displayName: String?, scr: SecureContentReference?, thnumnail: Bool, target: URL?, fileName: String? = nil, queue: DispatchQueue?, progressHandler: ((Double) -> Void)?, completionHandler: @escaping (Result<URL>) -> Void) {
         self.authenticator = authenticator
         self.url = url
         self.scr = scr
@@ -164,8 +170,8 @@ private extension DownloadFileOperation {
             decryptedFileURL = decryptedFileURL.appendingPathComponent(self.fileName!)
             
             var outputStream = OutputStream(toFileAtPath: decryptedFileURL.path, append: false)
-            if let ref = self.secureContentRef {
-                outputStream = try SecureOutputStream(stream: outputStream, scr: try SecureContentReference(json: ref))
+            if let scr = self.scr {
+                outputStream = try SecureOutputStream(stream: outputStream, scr: scr)
             }
             else {
                 return nil

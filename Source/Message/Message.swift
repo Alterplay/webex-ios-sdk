@@ -143,7 +143,7 @@ public struct Message : CustomStringConvertible {
     
     /// UUID of this message
     public var uuid: String? {
-        return self.activity.uuid
+        return self.activity.id
     }
     
     /// The timestamp that the message being created.
@@ -379,6 +379,10 @@ public struct RemoteFile {
         public var mimeType: String? {
             return self.model.mimeType
         }
+        
+        public var url: String? {
+            return self.model.url
+        }
 
         let model: ImageModel
 
@@ -409,6 +413,14 @@ public struct RemoteFile {
         return nil
     }
     
+    public var url: String? {
+        return model.image?.url
+    }
+    
+    public var toJSONString: String? {
+        return model.toJSONString()
+    }
+    
     let model: FileModel
 
     var shouldTranscode: Bool {
@@ -417,6 +429,15 @@ public struct RemoteFile {
 
     init(model: FileModel) {
         self.model = model
+    }
+    
+    /// Initialize from a JSON String
+    public init?(JSONString: String) {
+        if let model = FileModel(JSONString: JSONString) {
+            self.init(model: model)
+        } else {
+            return nil
+        }
     }
 }
 

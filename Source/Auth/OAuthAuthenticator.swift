@@ -141,11 +141,11 @@ public class OAuthAuthenticator : Authenticator {
     /// - parameter code: the OAuth code generated during authorization.
     /// - parameter completionHandler: the completion handler will be called when fetching the access token is complete, with a boolean to indicate if the process was successful.
     /// - since: 2.6.0
-    public func authorize(oauthCode: String, completionHandler: ((_ success: Bool) -> Void)? = nil) {
+    public func authorize(oauthCode: String, completionHandler: ((_ success: Bool, _ errorMessage: String?) -> Void)? = nil) {
         self.fetchingAccessTokenInProcess = true
         self.oauthClient.fetchAccessTokenFrom(oauthCode: oauthCode, clientId: self.clientId, clientSecret: self.clientSecret, redirectUri: self.redirectUri, completionHandler: { response in
             self.createAccessTokenHandler(errorHandler: { error in SDKLogger.shared.error("Failure retrieving the access token from the oauth code", error: error)})(response)
-            completionHandler?(true)
+            completionHandler?(true, nil)
         })
     }
 
