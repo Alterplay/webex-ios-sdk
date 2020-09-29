@@ -24,9 +24,21 @@ import AlamofireObjectMapper
 import ObjectMapper
 import SwiftyJSON
 
+enum ServiceError {
+    enum locus : Int {
+        case requireModeratorPinOrGuest = 2423005
+        case requireModeratorPinOrGuestPin = 2423006
+        case requireModeratorKeyOrMeetingPassword = 2423016
+        case requireModeratorKeyOrGuest = 2423017
+        case requireMeetingPassword = 2423018
+    }
+}
+
+
 enum Service: String {
     case hydra
     case region
+    case u2c
     case wdm
     case kms = "encryption"
     case locus
@@ -34,59 +46,71 @@ enum Service: String {
     case metrics
     case calliopeDiscovery
     
-    func endpoint(for: Device?) -> String {
+    func homed(for device: Device?) -> ServiceRequest.Builder {
+        return ServiceRequest.make(self.baseUrl(for: device))
+    }
+
+    var global: ServiceRequest.Builder {
+        return ServiceRequest.make(self.baseUrl())
+    }
+    
+    func baseUrl(for device: Device? = nil) -> String {
         switch self {
         case .region:
-            return "https://ds.ciscospark.com/v1/region"
+            return "https://ds.ciscospark.com/v1"
+        case .u2c:
+            #if INTEGRATIONTEST
+            return "https://u2c-intb.ciscospark.com/u2c/api/v1"
+            #else
+            return "https://u2c.wbx2.com/u2c/api/v1"
+            #endif
         case .wdm:
             #if INTEGRATIONTEST
-            return ProcessInfo().environment["WDM_SERVER_ADDRESS"] == nil ? "https://wdm-intb.ciscospark.com/wdm/api/v1/devices":ProcessInfo().environment["WDM_SERVER_ADDRESS"]!
+            let `default` = ProcessInfo().environment["WDM_SERVER_ADDRESS"] == nil ? "https://wdm-intb.ciscospark.com/wdm/api/v1" : ProcessInfo().environment["WDM_SERVER_ADDRESS"]!
             #else
-            return "https://wdm-a.wbx2.com/wdm/api/v1/devices"
+            let `default` = "https://wdm-a.wbx2.com/wdm/api/v1"
             #endif
+            return self.baseUrl(device: device, default: `default`)
         case .hydra:
             #if INTEGRATIONTEST
             let `default` = ProcessInfo().environment["hydraServerAddress"] == nil ? "https://apialpha.ciscospark.com/v1" : ProcessInfo().environment["hydraServerAddress"]!
             #else
             let `default` = "https://api.ciscospark.com/v1"
             #endif
-            return self.dynamicEndpoint(`for`, default: `default`)
+            return self.baseUrl(device: device, default: `default`)
         case .kms:
             #if INTEGRATIONTEST
             let `default` = "https://encryption-intb.ciscospark.com/encryption/api/v1"
             #else
             let `default` = "https://encryption-a.wbx2.com/encryption/api/v1"
             #endif
-            return self.dynamicEndpoint(`for`, default: `default`)
+            return self.baseUrl(device: device, default: `default`)
         case .conv:
             #if INTEGRATIONTEST
             let `default` = "https://conversation-intb.ciscospark.com/conversation/api/v1"
             #else
             let `default` = "https://conv-a.wbx2.com/conversation/api/v1"
             #endif
-            return self.dynamicEndpoint(`for`, default: `default`)
+            return self.baseUrl(device: device, default: `default`)
         case .locus:
-            return self.dynamicEndpoint(`for`, default: "https://locus-a.wbx2.com/locus/api/v1")
+            return self.baseUrl(device: device, default: "https://locus-a.wbx2.com/locus/api/v1")
         case .metrics:
-            return self.dynamicEndpoint(`for`, default: "https://metrics-a.wbx2.com/metrics/api/v1")
+            return self.baseUrl(device: device, default: "https://metrics-a.wbx2.com/metrics/api/v1")
         case .calliopeDiscovery:
-            return self.dynamicEndpoint(`for`, default: "https://calliope-a.wbx2.com/calliope/api/discovery/v1")
+            return self.baseUrl(device: device, default: "https://calliope-a.wbx2.com/calliope/api/discovery/v1")
         }
     }
     
-    private func dynamicEndpoint(_ device: Device?, default: String) -> String {
-        if let device = device, let url = device.services[self.serviceUrlKey] {
-            return url
-        }
-        return `default`
-    }
-    
-    var serviceUrlKey: String {
-        return "\(self.rawValue)ServiceUrl"
+    private func baseUrl(device: Device?, default: String) -> String {
+        return device?[service: self.rawValue] ?? `default`
     }
 }
 
 class ServiceRequest : RequestRetrier, RequestAdapter {
+
+    static func make(_ url: String) -> ServiceRequest.Builder {
+        return ServiceRequest.Builder(url: url)
+    }
     
     private let tokenPrefix: String = "Bearer "
     private var pendingTimeCount : Int = 0
@@ -95,6 +119,7 @@ class ServiceRequest : RequestRetrier, RequestAdapter {
     private let method: Alamofire.HTTPMethod
     private let body: RequestParameter?
     private let query: RequestParameter?
+    private let form: Bool
     private let keyPath: String?
     private let queue: DispatchQueue?
     private let authenticator: Authenticator?
@@ -106,7 +131,7 @@ class ServiceRequest : RequestRetrier, RequestAdapter {
         return SessionManager(configuration: configuration)
     }()
     
-    private init(authenticator: Authenticator? = nil, url: URL, headers: [String: String], method: Alamofire.HTTPMethod, body: RequestParameter?, query: RequestParameter?, keyPath: String?, queue: DispatchQueue?) {
+    private init(authenticator: Authenticator? = nil, url: URL, headers: [String: String], method: Alamofire.HTTPMethod, body: RequestParameter?, query: RequestParameter?, form: Bool?, keyPath: String?, queue: DispatchQueue?) {
         self.authenticator = authenticator
         self.url = url
         self.headers = headers
@@ -115,40 +140,56 @@ class ServiceRequest : RequestRetrier, RequestAdapter {
         self.query = query
         self.keyPath = keyPath
         self.queue = queue
+        if let form = form {
+            self.form = form
+        }
+        else {
+            self.form = self.headers["Content-Type"]?.contains("x-www-form-urlencoded") ?? false
+        }
     }
     
     class Builder {
         
-        private let authenticator: Authenticator?
+        private var authenticator: Authenticator?
         private var headers: [String: String]
         private var method: Alamofire.HTTPMethod
         private var baseUrl: URL
         private var path: String
         private var body: RequestParameter?
         private var query: RequestParameter?
+        private var form: Bool?
         private var keyPath: String?
         private var queue: DispatchQueue?
         
-        convenience init(_ authenticator: Authenticator? = nil, service: Service) {
-            self.init(authenticator, service: service, device: nil)
-        }
-        
-        convenience init(_ authenticator: Authenticator? = nil, service: Service, device: Device?) {
-            self.init(authenticator, endpoint: service.endpoint(for: device))
-        }
-        
-        init(_ authenticator: Authenticator? = nil, endpoint: String) {
-            self.authenticator = authenticator
-            self.headers = ["Content-Type": "application/json",
+        fileprivate init(url: String) {
+            self.headers = ["Content-Type": "application/json;charset=UTF-8",
+                            "TrackingID": TrackingId.generator.next,
                             "User-Agent": UserAgent.string,
                             "Webex-User-Agent": UserAgent.string]
-            self.baseUrl = URL(string: endpoint)!
+            self.baseUrl = URL(string: url)!
             self.method = .get
             self.path = ""
         }
         
+        var url: URL {
+            return self.baseUrl.appendingPathComponent(self.path)
+        }
+
         func build() -> ServiceRequest {
-            return ServiceRequest(authenticator: authenticator, url: baseUrl.appendingPathComponent(path), headers: headers, method: method, body: body, query: query, keyPath: keyPath, queue: queue)
+            return ServiceRequest(authenticator: self.authenticator,
+                    url: self.baseUrl.appendingPathComponent(self.path),
+                    headers: self.headers,
+                    method: self.method,
+                    body: self.body,
+                    query: self.query,
+                    form: self.form,
+                    keyPath: self.keyPath,
+                    queue: self.queue)
+        }
+        
+        func authenticator(_ authenticator: Authenticator) -> Builder {
+            self.authenticator = authenticator
+            return self
         }
         
         func method(_ method: Alamofire.HTTPMethod) -> Builder {
@@ -157,7 +198,7 @@ class ServiceRequest : RequestRetrier, RequestAdapter {
         }
         
         func headers(_ headers: [String: String]) -> Builder {
-            self.headers = headers
+            self.headers.unionInPlace(headers)
             return self
         }
         
@@ -175,14 +216,19 @@ class ServiceRequest : RequestRetrier, RequestAdapter {
             self.path += "/" + path
             return self
         }
-        
-        func body(_ body: RequestParameter) -> Builder {
-            self.body = body
+
+        func body(_ body: [String: Any?]) -> Builder {
+            self.body = RequestParameter(body)
             return self
         }
-        
-        func query(_ query: RequestParameter) -> Builder {
-            self.query = query
+
+        func query(_ query: [String: Any?]) -> Builder {
+            self.query = RequestParameter(query)
+            return self
+        }
+
+        func form(_ form: Bool) -> Builder {
+            self.form = form
             return self
         }
         
@@ -200,8 +246,9 @@ class ServiceRequest : RequestRetrier, RequestAdapter {
     func responseObject<T: BaseMappable>(_ completionHandler: @escaping (ServiceResponse<T>) -> Void) {
         let tempQueue = self.queue
         let tempKeyPath = self.keyPath
-        createAlamofireRequest() { request in
+        makeRequest() { request in
             request.responseObject(queue: tempQueue, keyPath: tempKeyPath) { (response: DataResponse<T>) in
+                SDKLogger.shared.verbose(response.debugDescription)
                 var result: Result<T>
                 switch response.result {
                 case .success(let value):
@@ -222,8 +269,9 @@ class ServiceRequest : RequestRetrier, RequestAdapter {
     func responseArray<T: BaseMappable>(_ completionHandler: @escaping (ServiceResponse<[T]>) -> Void) {
         let tempQueue = self.queue
         let tempKeyPath = self.keyPath
-        createAlamofireRequest() { request in
+        makeRequest() { request in
             request.responseArray(queue: tempQueue, keyPath: tempKeyPath) { (response: DataResponse<[T]>) in
+                SDKLogger.shared.verbose(response.debugDescription)
                 var result: Result<[T]>
                 switch response.result {
                 case .success(let value):
@@ -243,8 +291,9 @@ class ServiceRequest : RequestRetrier, RequestAdapter {
     
     func responseJSON(_ completionHandler: @escaping (ServiceResponse<Any>) -> Void) {
         let tempQueue = self.queue
-        createAlamofireRequest() { request in
+        makeRequest() { request in
             request.responseJSON(queue: tempQueue) { (response: DataResponse<Any>) in
+                SDKLogger.shared.verbose(response.debugDescription)
                 var result: Result<Any>
                 switch response.result {
                 case .success(let value):
@@ -262,7 +311,29 @@ class ServiceRequest : RequestRetrier, RequestAdapter {
         }
     }
     
-    private func createAlamofireRequest(completionHandler: @escaping (Alamofire.DataRequest) -> Void) {
+    func responseString(_ completionHandler: @escaping (ServiceResponse<String>) -> Void) {
+        let tempQueue = self.queue
+        makeRequest() { request in
+            request.responseString(queue: tempQueue) { (response: DataResponse<String>) in
+                SDKLogger.shared.verbose(response.debugDescription)
+                var result: Result<String>
+                switch response.result {
+                case .success(let value):
+                    result = .success(value)
+                case .failure(var error):
+                    if response.response != nil {
+                        if let data = response.data {
+                            error = WebexError.requestErrorWith(data: data)
+                        }
+                    }
+                    result = .failure(error)
+                }
+                completionHandler(ServiceResponse(response.response, result))
+            }
+        }
+    }
+    
+    private func makeRequest(completionHandler: @escaping (Alamofire.DataRequest) -> Void) {
         let accessTokenCallback: (String?) -> Void = { accessToken in
             var headerDict = self.headers
             let tempTokenPrefix = self.tokenPrefix
@@ -276,15 +347,16 @@ class ServiceRequest : RequestRetrier, RequestAdapter {
                 //disable http local cache data.
                 urlRequest.cachePolicy = .reloadIgnoringLocalCacheData
                 if let body = self.body {
-                    urlRequest = try JSONEncoding.default.encode(urlRequest, with: body.value())
+                    let parameterEncoding: ParameterEncoding = self.form ? URLEncoding.httpBody : JSONEncoding.default
+                    urlRequest = try parameterEncoding.encode(urlRequest, with: body.value())
                 }
                 if let query = self.query {
-                    urlRequest = try URLEncoding.default.encode(urlRequest, with: query.value())
+                    urlRequest = try URLEncoding.queryString.encode(urlRequest, with: query.value())
                 }
                 urlRequestConvertible = urlRequest
             } catch {
                 class ErrorRequestConvertible : URLRequestConvertible {
-                    private let error: Error
+                    let error: Error
                     
                     init(_ error: Error) {
                         self.error = error
@@ -305,7 +377,9 @@ class ServiceRequest : RequestRetrier, RequestAdapter {
                 }
                 return finalRequest
             }
-            completionHandler(self.sessionManager.request(urlRequestConvertible).validate())
+            let request = self.sessionManager.request(urlRequestConvertible).validate()
+            SDKLogger.shared.verbose(request.debugDescription)
+            completionHandler(request)
         }
         
         if let authenticator = authenticator {
@@ -358,18 +432,54 @@ class ServiceRequest : RequestRetrier, RequestAdapter {
     }
 }
 
-extension WebexError {
+fileprivate extension WebexError {
     /// Converts the error data to NSError
     static func requestErrorWith(data: Data) -> Error {
         var failureReason = "Service request failed without error message"
         do {
-            if let errorMessage = try JSON(data: data)["message"].string  {
+            let json = try JSON(data: data)
+            if let errorMessage = json["message"].string  {
                 failureReason = errorMessage
+            }
+            if let code = json["errorCode"].int  {
+                switch code {
+                case ServiceError.locus.requireModeratorPinOrGuest.rawValue,
+                     ServiceError.locus.requireModeratorPinOrGuestPin.rawValue,
+                     ServiceError.locus.requireMeetingPassword.rawValue,
+                     ServiceError.locus.requireModeratorKeyOrGuest.rawValue,
+                     ServiceError.locus.requireModeratorKeyOrMeetingPassword.rawValue:
+                    return WebexError.requireHostPinOrMeetingPassword(reason: failureReason)
+                default:
+                    return WebexError.serviceFailed(reason: failureReason)
+                }
             }
         } catch {
             
         }
-        return WebexError.serviceFailed(code: -7000, reason: failureReason)
+        return WebexError.serviceFailed(reason: failureReason)
+    }
+}
+
+fileprivate struct RequestParameter {
+
+    private var storage: [String: Any] = [:]
+
+    init(_ parameters: [String: Any?] = [:]) {
+        for (key, value) in parameters {
+            guard let realValue = value else {
+                continue
+            }
+            switch realValue {
+            case let bool as Bool:
+                storage.updateValue(String(bool), forKey: key)
+            default:
+                storage.updateValue(realValue, forKey: key)
+            }
+        }
+    }
+
+    func value() -> [String: Any] {
+        return storage
     }
 }
 

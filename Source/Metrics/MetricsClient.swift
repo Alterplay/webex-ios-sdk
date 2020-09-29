@@ -30,10 +30,11 @@ class MetricsClient {
         self.service = service
     }
     
-    func post(_ metrics: RequestParameter, completionHandler: @escaping (ServiceResponse<Any>) -> Void) {
+    func post(_ metrics: [String: Any?], client: Bool, completionHandler: @escaping (ServiceResponse<Any>) -> Void) {
         if let device = self.service.device {
-            let request = ServiceRequest.Builder(authenticator, service: .metrics, device: device)
-                .path("metrics")
+            let request = Service.metrics.homed(for: device)
+                .authenticator(self.authenticator)
+                .path(client ? "clientmetrics": "metrics")
                 .method(.post)
                 .body(metrics)
                 .build()
