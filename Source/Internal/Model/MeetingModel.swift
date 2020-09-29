@@ -19,25 +19,30 @@
 // THE SOFTWARE.
 
 import Foundation
+import ObjectMapper
 
-struct RequestParameter {
-    private var storage: [String: Any] = [:]
-    
-    init(_ parameters: [String: Any?] = [:]) {
-        for (key, value) in parameters {
-            guard let realValue = value else {
-                continue
-            }
-            switch realValue {
-            case let bool as Bool:
-                storage.updateValue(String(bool), forKey: key)
-            default:
-                storage.updateValue(realValue, forKey: key)
-            }
-        }
+struct MeetingModel: Mappable {
+
+    private(set) var meetingId: String?
+    private(set) var startTime: Date?
+    private(set) var durationMinutes: Int?
+    private(set) var organizer: String?
+    private(set) var resourceUrl:String?
+    private(set) var removed: Bool?
+    private(set) var icalUid:String?
+    private(set) var resourceType:String?
+
+    init?(map: Map) {
     }
-    
-    func value() -> [String: Any] {
-        return storage
+
+    mutating func mapping(map: Map) {
+        meetingId <- map["meetingId"]
+        startTime <- (map["startTime"], CustomDateFormatTransform(formatString: "yyyy-MM-dd'T'HH:mm:ss.SSSZZZZZ"))
+        durationMinutes <- map["durationMinutes"]
+        organizer <- map["organizer"]
+        resourceUrl <- map["resourceUrl"]
+        removed <- map["removed"]
+        icalUid <- map["icalUid"]
+        resourceType <- map["resourceType"]
     }
 }

@@ -40,9 +40,10 @@ class MediaSessionWrapper {
     fileprivate var mediaSession = MediaSession()
     private var mediaSessionObserver: MediaSessionObserver?
     private var broadcastServer: BroadcastConnectionServer?
+    private var _remoteVideoRenderMode: Call.VideoRenderMode = .cropFill
     
     // MARK: - SDP
-    func getLocalSdp() -> String {
+    func getLocalSdp() -> String? {
         mediaSession.createLocalSdpOffer()
         return mediaSession.localSdpOffer
     }
@@ -79,6 +80,17 @@ class MediaSessionWrapper {
     
     var localScreenShareViewSize: CGSize {
         return mediaSession.getRenderViewSize(with: .localScreenShare)
+    }
+    
+    var remoteVideoRenderMode: Call.VideoRenderMode {
+        get {
+            return self._remoteVideoRenderMode
+        }
+        set {
+            self._remoteVideoRenderMode = newValue
+            adjustRemoteRenderViewSize()
+            mediaSession.setRemoteVideoRenderMode(newValue.wmeMode)
+        }
     }
     
     var videoViews: (local:MediaRenderView,remote:MediaRenderView)? {
@@ -210,7 +222,7 @@ class MediaSessionWrapper {
         }
     }
     
-    // MARK: - lifecycle
+    // MARK: - lifecycleh
     func prepare(option: MediaOption, phone: Phone) {
         if self.status == .preview {
             self.stopPreview()
@@ -219,26 +231,57 @@ class MediaSessionWrapper {
             self.status = .prepare
             
             let mediaConfig :MediaCapabilityConfig = MediaCapabilityConfig()
-            mediaConfig.audioMaxBandwidth = phone.audioMaxBandwidth
+            // mediaConfig.mqeCallback = false
+            mediaConfig.audioMaxRxBandwidth = phone.audioMaxRxBandwidth
+
+            for setting in phone.advancedSettings {
+                switch setting {
+//                case .deviceUseRemoteSettings(let value):
+//                    if let settings = phone.devices.device?.deviceSettings, value {
+//                        mediaConfig.deviceSettings = settings
+//                    }
+//                case .activeSpeakerOverRTCP(let value):
+//                    mediaConfig.isASNOEnabled = value
+//                case .audioAutomaticGainControl(let value):
+//                    mediaConfig.isAGCEnabled = value
+//                case .audioEchoCanccellation(let value):
+//                    mediaConfig.isECEnabled = value
+//                case .audioForwardErrorCorrection(let value):
+//                    mediaConfig.isAudioFECEnabled = value
+//                case .audioNoiseSupression(let value):
+//                    mediaConfig.isNSEnabled = value
+//                case .audioVoiceActivityDetection(let value):
+//                    mediaConfig.isVADEnabled = value
+//                case .audioMixingStream(let value):
+//                    mediaConfig.mixingStreamNum = value.rawValue
+                case .videoEnableDecoderMosaic(let value):
+                    mediaConfig.isDecoderMosaicEnabled = value
+//                case .videoReceiverBasedQosSupported(let value):
+//                    mediaConfig.isVideoReceiverBasedQosSupported = value
+                case .videoMaxTxFPS(let value):
+                    mediaConfig.videoMaxTxFPS = UInt32(value)
+                }
+            }
             
-            if option.hasVideo && option.hasScreenShare {
-                mediaConfig.videoMaxBandwidth = phone.videoMaxBandwidth
-                mediaConfig.screenShareMaxBandwidth = phone.screenShareMaxBandwidth
-                mediaSession.mediaConstraint = MediaConstraint(constraint: MediaConstraintFlag.audio.rawValue | MediaConstraintFlag.video.rawValue | MediaConstraintFlag.screenShare.rawValue, withCapability:mediaConfig)
+            var constraint = MediaConstraintFlag.audio.rawValue
+            if option.hasVideo {
+                mediaConfig.videoMaxRxBandwidth = phone.videoMaxRxBandwidth
+                mediaConfig.videoMaxTxBandwidth = phone.videoMaxTxBandwidth
+                constraint = constraint | MediaConstraintFlag.video.rawValue
+            }
+            if option.hasScreenShare {
+                mediaConfig.sharingMaxRxBandwidth = phone.sharingMaxRxBandwidth
+                constraint = constraint | MediaConstraintFlag.screenShare.rawValue
+            }
+            mediaSession.mediaConstraint = MediaConstraint(constraint: constraint, withCapability:mediaConfig)
+            if option.hasVideo {
                 mediaSession.addRenderView(option.localVideoView, type: .localVideo)
                 mediaSession.addRenderView(option.remoteVideoView, type: .remoteVideo)
+            }
+            if option.hasScreenShare {
                 mediaSession.addRenderView(option.screenShareView, type: .remoteScreenShare)
             }
-            else if option.hasVideo {
-                mediaConfig.videoMaxBandwidth = phone.videoMaxBandwidth
-                mediaSession.mediaConstraint = MediaConstraint(constraint: MediaConstraintFlag.audio.rawValue | MediaConstraintFlag.video.rawValue, withCapability:mediaConfig)
-            
-                mediaSession.addRenderView(option.localVideoView, type: .localVideo)
-                mediaSession.addRenderView(option.remoteVideoView, type: .remoteVideo)
-            }
-            else {
-                mediaSession.mediaConstraint = MediaConstraint(constraint: MediaConstraintFlag.audio.rawValue, withCapability:mediaConfig)
-            }
+
             mediaSession.createMediaConnection()
             mediaSession.setDefaultCamera(phone.defaultFacingMode == Phone.FacingMode.user)
             mediaSession.setDefaultAudioOutput(phone.defaultLoudSpeaker)
@@ -257,6 +300,12 @@ class MediaSessionWrapper {
             mediaSessionObserver = MediaSessionObserver(call: call)
             mediaSessionObserver?.startObserving(mediaSession)
             mediaSession.connectToCloud()
+            
+            if call.model.myself?.device?.serverComposed ?? false {
+                SDKLogger.shared.error("Set the remote video render mode to CropFill for composed video.")
+                mediaSession.setRemoteVideoRenderMode(self._remoteVideoRenderMode.wmeMode)
+            }
+            
             self.broadcastServer?.start() {
                 error in
                 if error != nil {
@@ -416,4 +465,93 @@ extension MediaSessionWrapper {
     func auxStreamCount() -> Int {
         return self.mediaSession.auxStreamCount
     }
+    
+    var MQEReport: String? {
+        return self.mediaSession.getEventReport()
+    }
+}
+
+extension MediaSessionWrapper {
+
+    private func adjustRemoteRenderViewSize() {
+        guard let remoteView = mediaSession.getRenderView(with: .remoteVideo) else {
+            return
+        }
+
+        if let constraint = remoteView.getSizeConstraint() {
+            constraint.constant += 0.5
+            DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + 3) {
+                constraint.constant -= 0.5
+            }
+            SDKLogger.shared.debug("adjust constraint = \(constraint.firstAttribute.rawValue)")
+        }
+        else {
+            let frame = remoteView.frame
+            let width = frame.width
+            var height = frame.height
+            height += 0.5
+            remoteView.frame = CGRect(origin: frame.origin, size: CGSize(width: width, height: height))
+            DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + 3) {
+                height -= 0.5
+                remoteView.frame = CGRect(origin: frame.origin, size: CGSize(width: width, height: height))
+            }
+            SDKLogger.shared.debug("adjust frame = \(remoteView.frame)")
+        }
+    }
+
+}
+
+extension Call.VideoRenderMode {
+    
+    var wmeMode: VideoScalingModeType {
+        get {
+            switch self {
+            case .fit:
+                return VideoScalingModeType.fit
+            case .cropFill:
+                return VideoScalingModeType.cropFill
+            case .stretchFill:
+                return VideoScalingModeType.stretchFill
+            }
+        }
+    }
+    
+}
+
+fileprivate extension UIView {
+
+    func getSizeConstraint() -> NSLayoutConstraint? {
+        for constraint in self.constraints {
+            if constraint.firstAttribute == .width || constraint.firstAttribute == .height {
+                return constraint
+            }
+        }
+
+        let includeSizeChangedAttribute: (NSLayoutConstraint.Attribute) -> Bool = { attribute in
+            switch attribute {
+            case .width, .height, .leading, .left, .top, .bottom, .right, .trailing, .leftMargin, .rightMargin, .topMargin, .bottomMargin, .leadingMargin, .trailingMargin:
+                return true
+            default:
+                return false
+            }
+        }
+
+        var _superview = self.superview
+        while let superview = _superview {
+            for constraint in superview.constraints {
+
+                if let first = constraint.firstItem as? UIView, first == self, includeSizeChangedAttribute(constraint.firstAttribute) {
+                    return constraint
+                }
+
+                if let second = constraint.secondItem as? UIView, second == self, includeSizeChangedAttribute(constraint.secondAttribute) {
+                    return constraint
+                }
+            }
+            _superview = superview.superview
+        }
+
+        return nil
+    }
+
 }

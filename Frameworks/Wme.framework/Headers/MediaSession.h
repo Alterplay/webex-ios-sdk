@@ -13,6 +13,18 @@ typedef NS_ENUM(NSInteger, MediaSessionType) {
     MediaSessionTypePreview
 };
 
+typedef NS_ENUM(NSInteger, VideoScalingModeType) {
+    VideoScalingModeStretchFill = 0,           ///< Stretch the Pic to fit the window
+    VideoScalingModeFit = 1,                  ///< Maintain the aspect ratio and content of the Pic
+    VideoScalingModeCropFill = 2,            ///< Crop some content to fix the aspect ratio of the window
+};
+
+typedef NS_ENUM(NSInteger, MediaMetricType) {
+    MediaMetricTypeIce,
+    MediaMetricTypeMediaQuality,
+    MediaMetricTypeMqe4Telemetry
+};
+
 @interface MediaSession : NSObject
 
 // SDP & constraint
@@ -29,7 +41,6 @@ typedef NS_ENUM(NSInteger, MediaSessionType) {
 - (void)setCamrea:(BOOL)frontCamera;
 
 - (void)setDefaultAudioOutput:(BOOL)useSpeaker;
-- (void)toggleSpeaker;
 - (BOOL)isSpeakerSelected;
 - (void)setSpeaker:(BOOL)useSpeaker;
 
@@ -45,6 +56,8 @@ typedef NS_ENUM(NSInteger, MediaSessionType) {
 - (UIView *)getRenderViewWithType:(MediaSessionType)type;
 - (CGSize)getRenderViewSizeWithType:(MediaSessionType)type andVid:(int)vid;
 - (CGSize)getRenderViewSizeWithType:(MediaSessionType)type;
+
+- (void)setRemoteVideoRenderMode:(VideoScalingModeType)mode;
 
 // audio & video control
 - (void)muteMedia:(MediaSessionType)type;
@@ -85,4 +98,6 @@ typedef NS_ENUM(NSInteger, MediaSessionType) {
 @property (atomic) NSInteger auxStreamCount;
 - (int)subscribeVideoTrack:(UIView *)renderView;
 - (void)unsubscribeVideoTrack:(int)vid;
+
+-(NSString*)getEventReport;
 @end

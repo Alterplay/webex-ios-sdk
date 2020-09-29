@@ -20,7 +20,7 @@
 
 import Foundation
 
-/// An iOS client wrapper of the Cisco Webex [Space Memberships REST API](https://developer.webex.com/resource-memberships.html) .
+/// An iOS client wrapper of the Cisco Webex [Space Memberships REST API](https://developer.webex.com/docs/api/v1/memberships) .
 ///
 /// - since: 1.2.0
 public class MembershipClient {
@@ -43,14 +43,10 @@ public class MembershipClient {
         self.messages = messages
     }
     
-    private func requestBuilder() -> ServiceRequest.Builder {
-        return ServiceRequest.Builder(self.phone.authenticator, service: .hydra, device: phone.devices.device).path("memberships")
+    private func hydraReqeust() -> ServiceRequest.Builder {
+        return Service.hydra.global.authenticator(self.phone.authenticator).path("memberships")
     }
-    
-    private func convRequestBuilder() -> ServiceRequest.Builder {
-        return ServiceRequest.Builder(self.phone.authenticator, service: .conv, device: phone.devices.device).path("conversations")
-    }
-    
+        
     /// Lists all space memberships where the authenticated user belongs.
     ///
     /// - parameter max: The maximum number of items in the response.
@@ -99,16 +95,9 @@ public class MembershipClient {
     }
     
     private func list(spaceId: String?, personId: String?, personEmail: EmailAddress?, max: Int?, queue: DispatchQueue?, completionHandler: @escaping (ServiceResponse<[Membership]>) -> Void) {
-        let query = RequestParameter([
-            "spaceId": spaceId,
-            "roomId": spaceId,
-            "personId": personId,
-            "personEmail": personEmail?.toString(),
-            "max": max])
-        
-        let request = requestBuilder()
+        let request = hydraReqeust()
             .method(.get)
-            .query(query)
+            .query(["spaceId": spaceId, "roomId": spaceId, "personId": personId, "personEmail": personEmail?.toString(), "max": max])
             .keyPath("items")
             .queue(queue)
             .build()
@@ -126,21 +115,15 @@ public class MembershipClient {
     /// - returns: Void
     /// - since: 1.2.0
     public func create(spaceId: String, personId: String, isModerator: Bool = false, queue: DispatchQueue? = nil, completionHandler: @escaping (ServiceResponse<Membership>) -> Void) {
-        let body = RequestParameter([
-            "spaceId": spaceId,
-            "roomId": spaceId,
-            "personId": personId,
-            "isModerator": isModerator])
-        
-        let request = requestBuilder()
-            .method(.post)
-            .body(body)
-            .queue(queue)
-            .build()
-        
+        let request = hydraReqeust()
+                .method(.post)
+                .body(["spaceId": spaceId, "roomId": spaceId, "personId": personId, "isModerator": isModerator])
+                .queue(queue)
+                .build()
+
         request.responseObject(completionHandler)
     }
-    
+
     /// Adds a person to a space by email address; optionally making the person a moderator.
     ///
     /// - parameter spaceId: The identifier of the space where the person is to be added.
@@ -151,18 +134,12 @@ public class MembershipClient {
     /// - returns: Void
     /// - since: 1.2.0
     public func create(spaceId: String, personEmail: EmailAddress, isModerator: Bool = false, queue: DispatchQueue? = nil, completionHandler: @escaping (ServiceResponse<Membership>) -> Void) {
-        let body = RequestParameter([
-            "spaceId": spaceId,
-            "roomId": spaceId,
-            "personEmail": personEmail.toString(),
-            "isModerator": isModerator])
-        
-        let request = requestBuilder()
-            .method(.post)
-            .queue(queue)
-            .body(body)
-            .build()
-        
+        let request = hydraReqeust()
+                .method(.post)
+                .queue(queue)
+                .body(["spaceId": spaceId, "roomId": spaceId, "personEmail": personEmail.toString(), "isModerator": isModerator])
+                .build()
+
         request.responseObject(completionHandler)
     }
     
@@ -174,7 +151,7 @@ public class MembershipClient {
     /// - returns: Void
     /// - since: 1.2.0
     public func get(membershipId: String, queue: DispatchQueue? = nil, completionHandler: @escaping (ServiceResponse<Membership>) -> Void) {
-        let request = requestBuilder()
+        let request = hydraReqeust()
             .method(.get)
             .path(membershipId)
             .queue(queue)
@@ -192,9 +169,9 @@ public class MembershipClient {
     /// - returns: Void
     /// - since: 1.2.0
     public func update(membershipId: String, isModerator: Bool, queue: DispatchQueue? = nil, completionHandler: @escaping (ServiceResponse<Membership>) -> Void) {
-        let request = requestBuilder()
+        let request = hydraReqeust()
             .method(.put)
-            .body(RequestParameter(["isModerator": isModerator]))
+            .body(["isModerator": isModerator])
             .path(membershipId)
             .queue(queue)
             .build()
@@ -210,7 +187,7 @@ public class MembershipClient {
     /// - returns: Void
     /// - since: 1.2.0
     public func delete(membershipId: String, queue: DispatchQueue? = nil, completionHandler: @escaping (ServiceResponse<Any>) -> Void) {
-        let request = requestBuilder()
+        let request = hydraReqeust()
             .method(.delete)
             .path(membershipId)
             .queue(queue)
@@ -228,80 +205,27 @@ public class MembershipClient {
     /// - returns: Void
     /// - since: 2.3.0
     public func listWithReadStatus(spaceId: String, queue: DispatchQueue? = nil, completionHandler: @escaping (ServiceResponse<[MembershipReadStatus]>) -> Void) {
-        let request = convRequestBuilder()
-            .path(spaceId.locusFormat)
-            .query(RequestParameter(forConversation: ["participantAckFilter":"all"]))
-            .queue(queue)
-            .build()
-        
-        request.responseJSON { (response: ServiceResponse<Any>) in
+        // TODO additionalUrls
+        guard let conversation = WebexId.from(base64Id: spaceId), conversation.is(.room), let convUrl = conversation.urlBy(device: self.phone.devices.device) else {
+            (queue ?? DispatchQueue.main).async {
+                completionHandler(ServiceResponse(nil, Result.failure(WebexError.illegalOperation(reason: "Cannot found the space: \(spaceId)"))))
+            }
+            return
+        }
+        let request = ServiceRequest.make(convUrl)
+                .authenticator(self.phone.authenticator)
+                .query(["uuidEntryFormat": true, "personRefresh": true, "activitiesLimit": 0, "includeConvWithDeletedUserUUID": false, "participantAckFilter": "all"])
+                .queue(queue)
+                .build()
+
+        request.responseObject { (response: ServiceResponse<ConversationModel>) in
             switch response.result {
-            case .success(let json):
-                guard let dict = json as? [String: Any],
-                    let items = (dict["participants"] as? [String: Any])?["items"] as? [[String: Any]] else {
-                    completionHandler(ServiceResponse(response.response, Result.failure(WebexError.serviceFailed(code: -7000, reason: "participants info Fetch Fail"))))
-                    return
-                }
-                var readStatuses = [MembershipReadStatus]()
-                let context = MembershipReadStatus.Context(spaceId: dict["id"] as? String)
-                items.forEach({ (item) in
-                    if let readStatus = try? MembershipReadStatus(JSON: item, context: context) {
-                        readStatuses.append(readStatus)
-                    }
-                })
-                completionHandler(ServiceResponse(response.response, Result.success(readStatuses)))
+            case .success(let conv):
+                let statuses = conv.participants?.items?.map( { MembershipReadStatus(conv: conv, person: $0, clusterId: conversation.clusterId) }) ?? []
+                completionHandler(ServiceResponse(response.response, Result.success(statuses)))
             case .failure(let error):
                 completionHandler(ServiceResponse(response.response, Result.failure(error)))
             }
         }
-    }
-}
-
-// MARK: handle conversation membership event
-extension MembershipClient {
-    
-    func handle(activity: ActivityModel) {
-        guard let verb = activity.verb else {
-            return
-        }
-                
-        var event: MembershipEvent?
-        var membership = Membership()
-        membership.spaceId = activity.targetId
-        
-        if verb == ActivityModel.Verb.acknowledge {
-            if let seenId = activity.objectUUID?.hydraFormat(for: .message) {
-                membership.id = "\(activity.actorUUID ?? ""):\(activity.targetUUID ?? "")".hydraFormat(for: IdentityType.membership)
-                membership.personId = activity.actorId
-                membership.personOrgId = activity.actorOrgId
-                membership.personDisplayName = activity.actorDisplayName
-                membership.personEmail = EmailAddress.fromString(activity.actorEmail)
-                event = MembershipEvent.messageSeen(membership, lastSeenMessage: seenId)
-            }
-        }
-        else {
-            membership.id = "\(activity.objectUUID ?? ""):\(activity.targetUUID ?? "")".hydraFormat(for: IdentityType.membership)
-            membership.personId = activity.objectUUID?.hydraFormat(for: .people)
-            membership.personOrgId = activity.objectOrgId
-            membership.personDisplayName = activity.objectDisplayName
-            membership.personEmail = EmailAddress.fromString(activity.objectEmail)
-            membership.isModerator = activity.isModerator
-            
-            switch verb {
-            case .add:
-                event = MembershipEvent.created(membership)
-            case .leave:
-                event = MembershipEvent.deleted(membership)
-            case .assignModerator, .unassignModerator:
-                event = MembershipEvent.update(membership)
-            default:
-                break
-            }
-        }
-        
-        if let event = event {
-            self.onEvent?(event)
-            self.onEventWithPayload?(event, WebexEventPayload(activity: activity, person: self.phone.me))
-        }        
     }
 }

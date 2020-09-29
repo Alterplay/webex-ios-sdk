@@ -61,7 +61,7 @@ public protocol OAuthAuthenticatorDelegate : AnyObject {
 /// An [OAuth](https://oauth.net/2/) based authentication strategy
 /// for authenticating a user on Cisco Webex.
 ///
-/// - see: [Cisco Webex Integration](https://developer.webex.com/authentication.html)
+/// - see: [Cisco Webex Integration](https://developer.webex.com/docs/integrations)
 /// - since: 1.2.0
 public class OAuthAuthenticator : Authenticator {
     
@@ -97,7 +97,7 @@ public class OAuthAuthenticator : Authenticator {
     /// - parameter redirectUri: the redirect URI that will be called when completing the authentication. This must match the redirect URI registered to your clientId.
     /// - parameter storage: the storage mechanism for persisting authentication information
     ///
-    /// - see: [Cisco Webex Integration](https://developer.webex.com/authentication.html)
+    /// - see: [Cisco Webex Integration](https://developer.webex.com/docs/integrations)
     /// - since: 1.2.0
     public convenience init(clientId: String, clientSecret: String, scope: String, redirectUri: String,
                             storage: OAuthStorage = OAuthKeychainStorage()) {
@@ -125,11 +125,7 @@ public class OAuthAuthenticator : Authenticator {
         if let authorizationUrl = self.authorizationUrl() {
             oauthLauncher.launchOAuthViewController(parentViewController: parentViewController, authorizationUrl: authorizationUrl, redirectUri: redirectUri) { oauthCode, errorMessage in
                 if let oauthCode = oauthCode {
-                    self.fetchingAccessTokenInProcess = true
-                    self.oauthClient.fetchAccessTokenFrom(oauthCode: oauthCode, clientId: self.clientId, clientSecret: self.clientSecret, redirectUri: self.redirectUri, completionHandler: { response in
-                        self.createAccessTokenHandler(errorHandler: { error in SDKLogger.shared.error("Failure retrieving the access token from the oauth code", error: error)})(response)
-                        completionHandler?(true, nil)
-                    })
+                    self.authorize(oauthCode: oauthCode, completionHandler: completionHandler)
                 } else {
                     completionHandler?(false, errorMessage)
                 }
@@ -140,17 +136,29 @@ public class OAuthAuthenticator : Authenticator {
         }
     }
     
+    /// Handles fetching the access token using the OAuth code generated during authorization. Assumes the application handles the authentication part of the process itself.
+    ///
+    /// - parameter code: the OAuth code generated during authorization.
+    /// - parameter completionHandler: the completion handler will be called when fetching the access token is complete, with a boolean to indicate if the process was successful.
+    /// - since: 2.6.0
+    public func authorize(oauthCode: String, completionHandler: ((_ success: Bool) -> Void)? = nil) {
+        self.fetchingAccessTokenInProcess = true
+        self.oauthClient.fetchAccessTokenFrom(oauthCode: oauthCode, clientId: self.clientId, clientSecret: self.clientSecret, redirectUri: self.redirectUri, completionHandler: { response in
+            self.createAccessTokenHandler(errorHandler: { error in SDKLogger.shared.error("Failure retrieving the access token from the oauth code", error: error)})(response)
+            completionHandler?(true)
+        })
+    }
+
     func authorizationUrl() -> URL? {
         if let encodedClientId = clientId.encodeQueryParamString,
             let encodedRedirectUri = redirectUri.encodeQueryParamString,
             let encodedScope = scope.encodeQueryParamString {
-            return URL(string: "\(Service.hydra.endpoint(for: nil))/authorize?response_type=code"
+            return URL(string: "\(Service.hydra.global.url.absoluteString)/authorize?response_type=code"
                 + "&client_id=" + encodedClientId
                 + "&redirect_uri=" + encodedRedirectUri
                 + "&scope=" + encodedScope
                 + "&state=iossdkstate")
         }
-        
         return nil
     }
     

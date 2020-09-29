@@ -20,21 +20,29 @@
 
 import UIKit
 import ObjectMapper
+import CoreServices
 
 /// The struct of a message event
 ///
 /// - since: 1.4.0
 public enum MessageEvent {
+
+    public enum UpdateType {
+        case fileThumbnail([RemoteFile])
+    }
+
     /// The callback when receive a new message
     case messageReceived(Message)
     /// The callback when a message was deleted
     case messageDeleted(String)
+    /// The callback when a message was updated
+    case messageUpdated(messageId: String, type: UpdateType)
 }
 
 /// This struct represents a Message on Cisco Webex.
 ///
 /// - since: 1.2.0
-public struct Message {
+public struct Message : CustomStringConvertible {
     
     /// The wrapper for the message text in different formats: plain text, markdown, and html.
     /// Please note this version of the SDK requires the application to convert markdown to html.
@@ -56,7 +64,7 @@ public struct Message {
         ///
         /// - parameter plain: The plain text.
         public static func plain(plain: String) -> Text {
-            return Text(plain: plain, html: nil, markdown: nil)
+            return Text(plain: plain)
         }
         
         /// Make a Text object for the html.
@@ -64,7 +72,7 @@ public struct Message {
         /// - parameter html: The text with the html markup.
         /// - parameter plain: The alternate plain text for cases that do not support html markup.
         public static func html(html: String, plain: String? = nil) -> Text {
-            return Text(plain: plain, html: html, markdown: nil)
+            return Text(plain: plain, html: html)
         }
         
         /// Make a Text object for the markdown.
@@ -75,9 +83,23 @@ public struct Message {
         public static func markdown(markdown: String, html: String, plain: String? = nil) -> Text {
             return Text(plain: plain, html: html, markdown: markdown)
         }
-        
+
         var simple: String? {
             return self.html ?? self.markdown ?? self.plain
+        }
+
+        fileprivate init(object: ObjectModel?, clusterId: String?) {
+            self.plain = object?.displayName
+            self.html = object?.content?.reformatHtml(clusterId: clusterId)
+            if let comment = object as? CommentModel {
+                self.markdown = comment.markdown
+            }
+        }
+
+        fileprivate init(plain: String? = nil, html: String? = nil, markdown: String? = nil) {
+            self.plain = plain
+            self.html = html
+            self.markdown = markdown
         }
     }
     
@@ -90,35 +112,34 @@ public struct Message {
     public private(set) var textAsObject: Message.Text?
     
     /// The identifier of the space where this message was posted.
-    public var spaceId: String? {
-        return self.activity.targetId
-    }
+    public private(set) var spaceId: String?
     
     ///  The type of the space, "group"/"direct", where the message is posted.
-    public var spaceType: SpaceType {
-        return self.activity.targetTag
-    }
+    public private(set) var spaceType: SpaceType = .group
     
     /// The identifier of the person who sent this message.
     public var personId: String? {
-        return self.activity.actorId
+        if let uuid = self.activity.actor?.id {
+            return WebexId(type: .people, cluster: WebexId.DEFAULT_CLUSTER_ID, uuid: uuid).base64Id
+        }
+        return nil
     }
     
     /// The email address of the person who sent this message.
     public var personEmail: String? {
-        return self.activity.actorEmail
+        return self.activity.actor?.emailAddress
+    }
+
+    /// The display name of the person who sent this message.
+    public var personDisplayName: String? {
+        return self.activity.actor?.displayName
     }
     
     /// The identifier of the recipient when sending a private 1:1 message.
-    public var toPersonId: String? {
-        return self.activity.toPersonId
-    }
+    public private(set) var toPersonId: String?
     
     /// The email address of the recipient when sending a private 1:1 message.
-    public var toPersonEmail: EmailAddress? {
-        // TODO
-        return nil
-    }
+    public private(set) var toPersonEmail: EmailAddress?
     
     /// UUID of this message
     public var uuid: String? {
@@ -127,26 +148,24 @@ public struct Message {
     
     /// The timestamp that the message being created.
     public var created: Date? {
-        if let verb =  self.activity.verb, verb == .post || verb == .share {
-            return self.activity.created
-        }
-        return nil
+        return self.activity.published
     }
     
-    /// Returns true if the receipient of the message is included in message's mention list
+    /// Returns true if the receipient of the message is included in message's mention list.
     ///
     /// - since: 1.4.0
-    public var isSelfMentioned: Bool {
-        return self.mentions?.find { metion in
-            switch metion {
-            case .person(let id):
-                return id == self.toPersonId
-            case .all:
-                return true
-            }
-        } != nil
-    }
-    
+    public private(set) var isSelfMentioned: Bool = false
+
+    /// Returns true if the message mentioned everyone in space.
+    ///
+    /// - since: 2.6.0
+    public private(set) var isAllMentioned: Bool = false
+
+    /// Returns all people mentioned in the message
+    ///
+    /// - since: 2.6.0
+    public private(set) var mentions: [Mention]?
+
     /// The content of the message.
     public var text: String? {
         return self.textAsObject?.simple
@@ -155,9 +174,7 @@ public struct Message {
     /// An array of file attachments in the message.
     ///
     /// - since: 1.4.0
-    public var files: [RemoteFile]? {
-        return self.activity.files
-    }
+    public private(set) var files: [RemoteFile]?
     
     /// Returns the parent message for the reply message.
     ///
@@ -167,37 +184,8 @@ public struct Message {
     /// Returns true for reply message.
     ///
     /// - since: 2.5.0
-    public private(set) var isReply: Bool
-    
-    private let activity: ActivityModel
-    
-    init(activity: ActivityModel) {
-        self.activity = activity
-        self.parentId = activity.parentId
-        self.isReply = activity.parentType == "reply"
-        self.id = activity.uuid?.hydraFormat(for: .message)
-        if self.activity.verb == ActivityModel.Verb.delete, let uuid = self.activity.objectUUID {
-            self.id = uuid.hydraFormat(for: .message)
-        }
-        self.textAsObject = Message.Text(plain: activity.objectDisplayName, html: activity.objectConetnt, markdown: activity.objectMarkdown)
-    }
-    
-    private var mentions: [Mention]? {
-        var mentionList = [Mention]()
-        if let peoples = self.activity.mentionedPeople {
-            mentionList.append(contentsOf: (peoples.map { Mention.person($0) }))
-        }
-        if let groups = self.activity.mentionedGroup {
-            for group in groups where group == "all" {
-                mentionList.append(Mention.all)
-                break
-            }
-        }
-        return mentionList.count > 0 ? mentionList : nil
-    }
-}
+    public private(set) var isReply: Bool = false
 
-extension Message : CustomStringConvertible {
     /// Json format descrition of message.
     ///
     /// - since: 1.4.0
@@ -206,6 +194,77 @@ extension Message : CustomStringConvertible {
             return activity.toJSONString(prettyPrint: true) ?? ""
         }
     }
+
+    let activity: ActivityModel
+
+    var isMissingThumbnail: Bool {
+        if self.activity.verb == .share,
+           let content = self.activity.object as? ContentModel,
+           content.contentCategory == ContentModel.Category.documents.rawValue {
+            if let files = self.files {
+                for file in files {
+                    if file.thumbnail == nil && file.shouldTranscode {
+                        return true
+                    }
+                }
+            }
+        }
+        return false
+    }
+    
+    init(activity: ActivityModel, clusterId: String?, person: Person?) {
+        self.activity = activity
+        if let uuid = activity.id {
+            self.id = WebexId(type: .message, cluster: clusterId, uuid: uuid).base64Id
+        }
+        if activity.verb == .delete, let object = activity.object, let uuid = object.id {
+            self.id = WebexId(type: .message, cluster: clusterId, uuid: uuid).base64Id
+        }
+        self.textAsObject = Message.Text(object: activity.object, clusterId: clusterId)
+
+        if let person = activity.target as? PersonModel, let uuid = person.id {
+            self.spaceType = .direct
+            self.toPersonId = WebexId(type: .people, cluster: WebexId.DEFAULT_CLUSTER_ID, uuid: uuid).base64Id
+            self.toPersonEmail = EmailAddress.fromString(person.emailAddress)
+        }
+        else if let target = activity.target, let uuid = target.id {
+            self.spaceId = WebexId(type: .room, cluster: clusterId, uuid: uuid).base64Id
+            self.spaceType = .group
+            if let conv = target as? ConversationModel, conv.isOneOnOne {
+                self.spaceType = .direct
+            }
+        }
+        if self.spaceId == nil, let uuid = activity.conversationId {
+            self.spaceId = WebexId(type: .room, cluster: clusterId, uuid: uuid).base64Id
+        }
+        if let parent = self.activity.parent, let uuid = parent.id {
+            self.parentId = WebexId(type: .message, cluster: clusterId, uuid: uuid).base64Id
+            self.isReply = parent.isReply
+        }
+        if let person = person, let base64Id = person.id {
+            self.isSelfMentioned = self.activity.isSelfMention(user: WebexId.uuid(base64Id))
+        }
+        self.isAllMentioned = self.activity.isAllMentioned()
+        if let comment = activity.object as? CommentModel {
+            if let mentions = comment.groupMentions?.items, !mentions.isEmpty {
+                self.mentions = [Mention.all];
+            }
+            if let mentions = comment.mentions?.items, !mentions.isEmpty {
+                self.mentions = (self.mentions ?? []) + mentions.compactMap() { person in
+                    if let uuid = person.id {
+                        return Mention.person(WebexId(type: .people, cluster: WebexId.DEFAULT_CLUSTER_ID, uuid: uuid).base64Id)
+                    }
+                    return nil
+                }
+            }
+
+        }
+        if let content = activity.object as? ContentModel, let files = content.files?.items, !files.isEmpty {
+            self.files = files.compactMap { RemoteFile(model: $0) }
+        }
+    }
+
+
 }
 
 /// A data type represents a local file.
@@ -288,6 +347,10 @@ public class LocalFile {
         }
         self.size = size
     }
+
+    var shouldTranscode: Bool {
+        return FileType.from(name: self.name, mime: self.mime, url: nil, path: self.path).shouldTranscode
+    }
 }
 
 /// A data struct represents a remote file on Cisco Webex.
@@ -295,115 +358,165 @@ public class LocalFile {
 ///
 /// - since: 1.4.0
 public struct RemoteFile {
-    
+
     /// A data type represents a thumbnail for this remote file.
     /// The thumbnail typically is an image file which provides preview of the remote file without downloading.
     /// The content of the thumbnail can be downloaded via `MessageClient.downloadThumbnail(...)`.
     /// - since: 1.4.0
     public struct Thumbnail {
+
         /// The width of thumbanil.
-        public internal(set) var width: Int?
+        public var width: Int? {
+            return self.model.width
+        }
+
         /// The height of thumbanil.
-        public internal(set) var height: Int?
+        public var height: Int? {
+            return self.model.height
+        }
+
         /// The MIME type of thumbanil file.
-        public internal(set) var mimeType: String?
-        public var url: String?
-        var secureContentRef: String?
+        public var mimeType: String? {
+            return self.model.mimeType
+        }
+
+        let model: ImageModel
+
+        init(model: ImageModel) {
+            self.model = model
+        }
     }
     
     /// The display name of the remote file.
-    public internal(set) var displayName: String?
+    public var displayName: String? {
+        return self.model.displayName
+    }
+
     /// The MIME type of the remote file.
-    public internal(set) var mimeType: String?
+    public var mimeType: String? {
+        return self.model.mimeType
+    }
     /// The size in bytes of the remote file.
-    public internal(set) var size: UInt64?
+    public var size: UInt64? {
+        return self.model.fileSize
+    }
+
     /// The thumbnail of the remote file. Nil if no thumbnail availabe.
-    public internal(set) var thumbnail: Thumbnail?
-    
-    public var url: String?
-    var secureContentRef: String?
-}
-
-extension RemoteFile {
-    
-    init(local: LocalFile, downloadUrl: String) {
-        self.url = downloadUrl
-        self.displayName = local.name
-        self.size = local.size
-        self.mimeType = local.mime
+    public var thumbnail: Thumbnail? {
+        if let model = self.model.image {
+            return Thumbnail(model: model)
+        }
+        return nil
     }
     
-    mutating func encrypt(key: String?, scr: SecureContentReference) {
-        self.displayName = self.displayName?.encrypt(key: key)
-        if let chilerScr = try? scr.encryptedSecureContentReference(withKey: key) {
-            self.secureContentRef = chilerScr
+    let model: FileModel
+
+    var shouldTranscode: Bool {
+        return FileType.from(name: self.displayName, mime: self.mimeType, url: self.model.url, path: nil).shouldTranscode
+    }
+
+    init(model: FileModel) {
+        self.model = model
+    }
+}
+
+enum FileType: String, CaseIterable {
+    case image
+    case excel
+    case powerpoint
+    case word
+    case pdf
+    case video
+    case audio
+    case zip
+    case unknown
+
+    var shouldTranscode: Bool {
+        switch self {
+        case .powerpoint, .excel, .word, .pdf:
+            return true
+        default:
+            return false
         }
     }
-    
-    mutating func decrypt(key: String?) {
-        self.displayName = self.displayName?.decrypt(key: key)
-        self.secureContentRef = self.secureContentRef?.decrypt(key: key)
-        self.thumbnail?.decrypt(key: key)
-    }
-}
 
-extension RemoteFile.Thumbnail {
-    
-    init(local: LocalFile.Thumbnail, downloadUrl: String) {
-        self.url = downloadUrl
-        self.mimeType = local.mime
-        self.width = local.width
-        self.height = local.height
-    }
-    
-    mutating func encrypt(key: String?, scr: SecureContentReference) {
-        if let chilerScr = try? scr.encryptedSecureContentReference(withKey: key) {
-            self.secureContentRef = chilerScr
+    var extensions: [String] {
+        switch self {
+        case .image:
+            return ["jpg", "jpeg", "png", "gif"]
+        case .excel:
+            return ["xls", "xlsx", "xlsm", "xltx", "xltm"]
+        case .powerpoint:
+            return ["ppt", "pptx", "pptm", "potx", "potm", "ppsx", "ppsm", "sldx", "sldm"]
+        case .word:
+            return ["doc", "docx", "docm", "dotx", "dotm"]
+        case .pdf:
+            return ["pdf"]
+        case .video:
+            return ["mp4", "m4p", "mpg", "mpeg", "3gp", "3g2", "mov", "avi", "wmv", "qt", "m4v", "flv", "m4v"]
+        case .audio:
+            return ["mp3", "wav", "wma"]
+        case .zip:
+            return ["zip"]
+        case .unknown:
+            return []
         }
     }
-    
-    fileprivate mutating func decrypt(key: String?) {
-        self.secureContentRef = self.secureContentRef?.decrypt(key: key)
+
+    private static func from(_ ext: String) -> FileType? {
+        if let type = FileType.allCases.find(predicate: { $0.extensions.contains(ext) }) {
+            return type
+        }
+        return nil
     }
-    
+
+    static func from(name: String?, mime: String?, url: String?, path: String?) -> FileType {
+        if let mime = mime,
+           let uti = UTTypeCreatePreferredIdentifierForTag(kUTTagClassMIMEType, mime as CFString, nil),
+           let ext = UTTypeCopyPreferredTagWithClass(uti.takeRetainedValue(), kUTTagClassFilenameExtension),
+           let type = from((ext.takeRetainedValue() as String).lowercased()) {
+            return type
+        }
+        if let urlString = url,
+           let url = URL(string: urlString),
+           let type = from(url.pathExtension.lowercased()) {
+            return type
+        }
+        if let path = path,
+           let ext = path.components(separatedBy: ".").last, ext.count > 0,
+           let type = from(ext.lowercased()) {
+            return type
+        }
+        if let name = name,
+           let ext = name.components(separatedBy: ".").last, ext.count > 0,
+           let type = from(ext.lowercased()) {
+            return type
+        }
+        return .unknown
+    }
 }
 
-extension RemoteFile : Mappable {
-    
-    /// File constructor.
-    ///
-    /// - note: for internal use only.
-    public init?(map: Map) {
-    }
-    
-    /// File mapping from JSON.
-    ///
-    /// - note: for internal use only.
-    public mutating func mapping(map: Map) {
-        url <- map["url"]
-        displayName <- map["displayName"]
-        mimeType <- map["mimeType"]
-        size <- map["fileSize"]
-        thumbnail <- map["image"]
-        secureContentRef <- map["scr"]
-    }
-}
+fileprivate extension String {
 
-extension RemoteFile.Thumbnail : Mappable {
-    
-    /// File thumbnail constructor.
-    ///
-    /// - note: for internal use only.
-    public init?(map: Map) {}
-    
-    /// File thumbnail mapping from JSON.
-    ///
-    /// - note: for internal use only.
-    public mutating func mapping(map: Map) {
-        url <- map["url"]
-        mimeType <- map["mimeType"]
-        width <- map["width"]
-        height <- map["height"]
-        secureContentRef <- map["scr"]
+    func reformatHtml(clusterId: String?) -> String {
+        let pattern = "data-object-type=\"[a-zA-Z]*\"\\s+data-object-id=\"[0-9a-zA-Z-]{1,}\""
+        let regular = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive)
+        var ret = self
+        regular?.enumerateMatches(in: self, options: .reportProgress, range: NSRange(location: 0, length: self.count), using: { (result, flags, objc) in
+            if let result = result {
+                let matched = (self as NSString).substring(with: result.range)
+                let array = matched.components(separatedBy: "\"")
+                let type = array[1] == "person" ? IdentityType.people : IdentityType(rawValue: array[1])
+                let uuid = array[array.count - 2]
+                if let type = type {
+                    let base64Id = WebexId(type: type,
+                            cluster: (type == .people || type == .organization) ? WebexId.DEFAULT_CLUSTER_ID : clusterId,
+                            uuid: uuid).base64Id
+                    ret = ret.replacingOccurrences(of: uuid, with: base64Id)
+                }
+            }
+        })
+        return ret
     }
+
 }

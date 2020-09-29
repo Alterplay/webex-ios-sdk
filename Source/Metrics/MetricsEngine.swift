@@ -27,14 +27,14 @@ class MetricsEngine {
     private var buffer = MetricsBuffer()
     private lazy var timer: Timer = Timer(timeInterval: 30, target: self, selector: #selector(flush), userInfo: nil, repeats: true)
     let authenticator: Authenticator
-    
+
     init(authenticator: Authenticator, service: DeviceService) {
         self.authenticator = authenticator
         self.client = MetricsClient(authenticator: authenticator, service: service)
         #if swift(>=4.2)
-            RunLoop.current.add(self.timer, forMode: RunLoop.Mode.common)
+        RunLoop.current.add(self.timer, forMode: RunLoop.Mode.common)
         #else
-            RunLoop.current.add(self.timer, forMode: RunLoopMode.commonModes)
+        RunLoop.current.add(self.timer, forMode: RunLoopMode.commonModes)
         #endif
     }
 
@@ -46,38 +46,23 @@ class MetricsEngine {
     func track(name: String, _ data: [String: String]) {
         self.track(metric: Metric(name: name, data: data))
     }
-    
+
     private func track(metric: Metric) {
-        self.buffer.add(metric: metric)
-        if buffer.count > bufferLimit {
-            flush()
-        }
-    }
-    
-    private func track(metrics: [Metric]) {
-        self.buffer.add(metrics: metrics)
-        if buffer.count > bufferLimit {
-            flush()
-        }
-    }
-    
-    private func track(metrics: [Metric], completionHandler: ((Bool) -> Void)? = nil) {
-        var payloads = [[String: Any]]()
-        for metric in metrics {
-            if metric.isValid {
-                let payload = self.makePayloadWith(metric: metric)
-                payloads.append(payload)
-            }
-            else {
-                SDKLogger.shared.warn("Skipping invalid metric \(metric.name)")
+        if metric.isValid {
+            self.buffer.add(metric: metric)
+            if buffer.count(client: false) > bufferLimit {
+                flush()
             }
         }
-        if payloads.count > 0 {
-            self.client.post(RequestParameter(["metrics": payloads])) { response in
+    }
+
+    private func track(metrics: [[String: Any]], client: Bool, completionHandler: ((Bool) -> Void)? = nil) {
+        if metrics.count > 0 {
+            self.client.post(["metrics": metrics], client: client) { response in
                 SDKLogger.shared.debug("\(response)")
                 switch response.result {
                 case .success:
-                    SDKLogger.shared.info("Success: post metrics")
+                    SDKLogger.shared.debug("Success: post metrics")
                     completionHandler?(true)
                 case .failure(let error):
                     SDKLogger.shared.error("Failure", error: error)
@@ -86,27 +71,54 @@ class MetricsEngine {
             }
         }
     }
-    
-    private func makePayloadWith(metric: Metric) -> [String: String] {
-        var payload: [String: String] = metric.data
-        payload["key"] = metric.name
-        payload["time"] = metric.time
-        payload["postTime"] = Timestamp.nowInUTC
-        payload["type"] = metric.type.rawValue
-        if metric.background {
-            payload["background"] = String(metric.background)
-        }
-        return payload
-    }
-    
+
     @objc func flush() {
-        if buffer.count > 0 {
-            if let metrics = buffer.popAll() {
-                self.track(metrics: metrics, completionHandler: nil)
-            }
+        if let metrics = buffer.popAll(client: true) {
+            SDKLogger.shared.debug("Clientmetrics flush")
+            self.track(metrics: metrics, client: true, completionHandler: nil)
+        }
+        if let metrics = buffer.popAll(client: false) {
+            SDKLogger.shared.debug("Metrics flush")
+            self.track(metrics: metrics, client: false, completionHandler: nil)
         }
     }
-    
+
+    func reportMQE(phone: Phone, call: Call, metric: [String: Any]) {
+        let identifiers = SparkIdentifiers(call: call, device: phone.devices.device, person: phone.me)
+        let clientEvent = ClientEvent(name: .mediaQuality,
+                state: nil,
+                identifiers: identifiers,
+                canProceed: true,
+                mediaType: nil,
+                csi: nil,
+                mediaCapabilities: nil,
+                mediaLines: nil,
+                errors: nil,
+                trigger: nil,
+                displayLocation: nil,
+                dialedDomain: nil,
+                labels: nil,
+                eventData: nil,
+                intervals: [metric])
+        let clientInfo = ClientInfo(clientType: DeviceService.Types.teams_client.rawValue, os: "ios", osVersion: UIDevice.current.systemVersion)
+        let origin = DiagnosticOrigin(userAgent: UserAgent.string,
+                networkType: .unknown,
+                localIpAddress: "127.0.0.1",
+                usingProxy: false,
+                mediaEngineSoftwareVersion: MediaEngineWrapper.sharedInstance.wmeVersion,
+                clientInfo: clientInfo)
+        let time = DiagnosticOriginTime(triggered: Date().utc, sent: Date().utc)
+        let event = DiagnosticEvent(eventId: UUID(),
+                version: 1,
+                origin: origin,
+                originTime: time, event: clientEvent)
+        let metric = ClientMetric(event: event, type: "diagnostic-event");
+        self.buffer.add(clientMetric: metric)
+        if buffer.count(client: true) > bufferLimit {
+            flush()
+        }
+    }
+
 }
 
 

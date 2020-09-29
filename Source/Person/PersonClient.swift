@@ -20,7 +20,7 @@
 
 import Foundation
 
-/// An iOS client wrapper of the Cisco Webex [People REST API](https://developer.webex.com/resource-people.html) .
+/// An iOS client wrapper of the Cisco Webex [People REST API](https://developer.webex.com/docs/api/v1/people) .
 ///
 /// - since: 1.2.0
 public class PersonClient {
@@ -32,7 +32,7 @@ public class PersonClient {
     }
     
     private func requestBuilder() -> ServiceRequest.Builder {
-        return ServiceRequest.Builder(authenticator, service: .hydra).path("people")
+        return Service.hydra.global.authenticator(self.authenticator).path("people")
     }
     
     /// Lists people in the authenticated user's organization.
@@ -49,7 +49,7 @@ public class PersonClient {
     public func list(email: EmailAddress? = nil, displayName: String? = nil, id: String? = nil, orgId: String? = nil, max: Int? = nil, queue: DispatchQueue? = nil, completionHandler: @escaping (ServiceResponse<[Person]>) -> Void) {
         let request = requestBuilder()
             .method(.get)
-            .query(RequestParameter(["email": email?.toString(), "displayName": displayName, "id": id, "orgId":orgId, "max": max]))
+            .query(["email": email?.toString(), "displayName": displayName, "id": id, "orgId":orgId, "max": max])
             .keyPath("items")
             .queue(queue)
             .build()
@@ -107,19 +107,19 @@ public class PersonClient {
     /// - since: 1.4.0
     public func create(email: EmailAddress, displayName: String? = nil, firstName: String? = nil, lastName: String? = nil, avatar: String? = nil, orgId: String? = nil, roles: String? = nil, licenses: String? = nil, queue: DispatchQueue? = nil, completionHandler: @escaping (ServiceResponse<Person>) -> Void) {
         let request = requestBuilder()
-            .method(.post)
-            .query(RequestParameter(["email": email.toString(),
-                                     "displayName": displayName,
-                                     "orgId":orgId,
-                                     "firstName": firstName,
-                                     "lastName": lastName,
-                                     "avatar": avatar,
-                                     "orgId": orgId,
-                                     "roles": roles,
-                                     "licenses": licenses,
-                                     ]))
-            .queue(queue)
-            .build()
+                .method(.post)
+                .query(["email": email.toString(),
+                        "displayName": displayName,
+                        "orgId": orgId,
+                        "firstName": firstName,
+                        "lastName": lastName,
+                        "avatar": avatar,
+                        "orgId": orgId,
+                        "roles": roles,
+                        "licenses": licenses,
+                ])
+                .queue(queue)
+                .build()
         request.responseObject(completionHandler)
     }
     
@@ -141,20 +141,20 @@ public class PersonClient {
     /// - since: 1.4.0
     public func update(personId: String, email: EmailAddress? = nil, displayName: String? = nil, firstName: String? = nil, lastName: String? = nil, avatar: String? = nil, orgId: String? = nil, roles: String? = nil, licenses: String? = nil, queue: DispatchQueue? = nil, completionHandler: @escaping (ServiceResponse<Person>) -> Void) {
         let request = requestBuilder()
-            .method(.put)
-            .path(personId)
-            .query(RequestParameter(["email": email?.toString(),
-                                     "displayName": displayName,
-                                     "orgId":orgId,
-                                     "firstName": firstName,
-                                     "lastName": lastName,
-                                     "avatar": avatar,
-                                     "orgId": orgId,
-                                     "roles": roles,
-                                     "licenses": licenses,
-                                     ]))
-            .queue(queue)
-            .build()
+                .method(.put)
+                .path(personId)
+                .query(["email": email?.toString(),
+                        "displayName": displayName,
+                        "orgId": orgId,
+                        "firstName": firstName,
+                        "lastName": lastName,
+                        "avatar": avatar,
+                        "orgId": orgId,
+                        "roles": roles,
+                        "licenses": licenses,
+                ])
+                .queue(queue)
+                .build()
         request.responseObject(completionHandler)
     }
     

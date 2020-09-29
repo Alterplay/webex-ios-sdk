@@ -48,6 +48,7 @@ struct ParticipantModel {
         var state: String?
         var callLegId: String?
         var intent: IntentModel?
+        var serverComposed: Bool?
     }
     
     struct StatusModel {
@@ -69,7 +70,7 @@ struct ParticipantModel {
     var url: String?
     var state: ParticipantModel.State?
     var type: String?
-    var person: PersonModel?
+    var person: LocusParticipantInfoModel?
     var status: ParticipantModel.StatusModel?
     var deviceUrl: String?
     var mediaBaseUrl: String?
@@ -126,14 +127,25 @@ struct ParticipantModel {
         }
         return false
     }
+
+    var isRemoved: Bool {
+        return self.removed ?? false
+    }
+
+    var device: ParticipantModel.DeviceModel? {
+        if let deviceUrl = self.deviceUrl {
+            return self.devices?.filter{ $0.url == deviceUrl }.first
+        }
+        return nil
+    }
     
     subscript(device url: URL) -> ParticipantModel.DeviceModel? {
         return self.devices?.filter{ $0.url == url.absoluteString }.first
     }
-    
+
 }
 
-struct PersonModel {
+struct LocusParticipantInfoModel {
     var id: String?
     var email: String?
     var name: String?
@@ -207,6 +219,7 @@ extension ParticipantModel.DeviceModel: Mappable {
         state <- map["state"]
         callLegId <- map["callLegId"]
         intent <- map["intent"]
+        serverComposed <- map["serverComposed"]
     }
 }
 
@@ -250,7 +263,7 @@ extension ParticipantModel.DeviceModel.IntentModel: Mappable {
     }
 }
 
-extension PersonModel: Mappable {
+extension LocusParticipantInfoModel: Mappable {
     
     init?(map: Map){
     }

@@ -21,41 +21,13 @@
 import Foundation
 import ObjectMapper
 
-struct DeviceModel {
-    var deviceUrl: String?
-    var webSocketUrl: String?
-    var services: [String: String]?
-}
-
-extension DeviceModel: Mappable {
+struct ItemsModel<T: Mappable> : Mappable {
     
-    init?(map: Map){
-    }
+    private(set) var items: [T]?
+    
+    init?(map: Map) { }
     
     mutating func mapping(map: Map) {
-        deviceUrl <- map["url"]
-        webSocketUrl <- map["webSocketUrl"]
-        services <- map["services"]
-    }
-}
-
-struct RegionModel  {
-    var clientAddress: String?
-    var clientRegion: String?
-    var countryCode: String?
-    var regionCode: String?
-    var timezone: String?
-}
-
-extension RegionModel: Mappable {
-    init?(map: Map){
-    }
-    
-    mutating func mapping(map: Map) {
-        clientAddress <- map["clientAddress"]
-        clientRegion <- map["clientRegion"]
-        countryCode <- map["countryCode"]
-        regionCode <- map["regionCode"]
-        timezone <- map["timezone"]
+        items <- map["items"]
     }
 }

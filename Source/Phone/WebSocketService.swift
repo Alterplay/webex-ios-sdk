@@ -28,7 +28,7 @@ class WebSocketService: WebSocketDelegate {
     enum MercuryEvent {
         case connected(Error?)
         case disconnected(Error?)
-        case recvCall(CallModel)
+        case recvCall(LocusModel)
         case recvActivity(ActivityModel)
         case recvKms(KmsMessageModel)
     }
@@ -52,14 +52,14 @@ class WebSocketService: WebSocketDelegate {
     func connect(_ webSocketUrl: URL, _ block: @escaping (Error?) -> Void) {
         self.queue.async {
             if self.socket != nil && self.isConnected == true {
-                SDKLogger.shared.warn("Web socket has already connected")
+                SDKLogger.shared.warn("Websocket has already connected")
                 block(nil)
                 return
             }
             self.socket = nil
             self.authenticator.accessToken { token in
                 self.queue.async {
-                    SDKLogger.shared.info("Web socket is being connected")
+                    SDKLogger.shared.info("Websocket is being connected: \(webSocketUrl)")
                     var request = URLRequest(url: webSocketUrl)
                     if let token = token {
                         request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
@@ -80,7 +80,7 @@ class WebSocketService: WebSocketDelegate {
         self.queue.async {
             self.isConnected = false
             if let socket = self.socket {
-                SDKLogger.shared.info("Web socket is being disconnected")
+                SDKLogger.shared.info("Websocket is being disconnected")
                 socket.disconnect()
                 self.socket = nil
                 return
@@ -155,7 +155,7 @@ class WebSocketService: WebSocketDelegate {
                         // Unexpected disconnection, reconnect socket.
                         SDKLogger.shared.warn("Unexpected disconnection, websocket will reconnect in \(backoffTime) seconds")
                         if let socket = self.socket, !self.isConnected {
-                            SDKLogger.shared.info("Web socket is being reconnected")
+                            SDKLogger.shared.info("Websocket is being reconnected")
                             socket.connect()
                         }
                     }
@@ -174,6 +174,7 @@ class WebSocketService: WebSocketDelegate {
     
     func websocketDidReceiveData(socket: WebSocket, data: Data) {
         do {
+            SDKLogger.shared.verbose("Websocket got some data: \(String(decoding: data, as: UTF8.self))")
             let json = try JSON(data: data)
             ackMessage(socket, messageId: json["id"].string ?? "")
             let eventData = json["data"]
@@ -183,7 +184,7 @@ class WebSocketService: WebSocketDelegate {
                         let event = Mapper<CallEventModel>().map(JSON: eventObj),
                         let call = event.callModel,
                         let type = event.type {
-                        SDKLogger.shared.info("Receive locus event: \(type)")
+                        SDKLogger.shared.debug("Receive locus event: \(type)")
                         self.onEvent?(MercuryEvent.recvCall(call))
                     }
                     else {
