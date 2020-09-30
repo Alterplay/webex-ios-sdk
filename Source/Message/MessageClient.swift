@@ -548,7 +548,7 @@ public class MessageClient {
                     let operation = DownloadFileOperation(authenticator: self.authenticator,
                             url: url,
                             displayName: file.displayName,
-                            scr: file.model.scrObject,
+                            secureContentRef: file.model.scr,
                             thnumnail: false,
                             target: to,
                             fileName: fileName,
@@ -583,10 +583,11 @@ public class MessageClient {
                 }
             } else {
                 if let url = file.thumbnail?.model.url {
+                    file.thumbnail?.model.scr
                     let operation = DownloadFileOperation(authenticator: self.authenticator,
                             url: url,
                             displayName: file.displayName,
-                            scr: file.thumbnail?.model.scrObject,
+                            secureContentRef: file.thumbnail?.model.scr,
                             thnumnail: true,
                             target: to,
                             queue: nil,

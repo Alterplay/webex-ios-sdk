@@ -28,7 +28,7 @@ class DownloadFileOperation : NSObject, URLSessionDataDelegate {
     
     private let authenticator: Authenticator
     private let url: String
-    private let scr: SecureContentReference?
+    private let secureContentRef: String?
     private var target: URL
     private let fileName: String?
     private let queue: DispatchQueue
@@ -39,11 +39,11 @@ class DownloadFileOperation : NSObject, URLSessionDataDelegate {
     private var totalSize: UInt64?
     private var countSize: UInt64 = 0
     private let shouldDecryptOnCompletion: Bool
-
-    init(authenticator: Authenticator, url: String, displayName: String?, scr: SecureContentReference?, thnumnail: Bool, target: URL?, fileName: String? = nil, queue: DispatchQueue?, progressHandler: ((Double) -> Void)?, completionHandler: @escaping (Result<URL>) -> Void) {
+    
+    init(authenticator: Authenticator, url: String, displayName: String?, secureContentRef: String?, thnumnail: Bool, target: URL?, fileName: String? = nil, queue: DispatchQueue?, progressHandler: ((Double) -> Void)?, completionHandler: @escaping (Result<URL>) -> Void) {
         self.authenticator = authenticator
         self.url = url
-        self.scr = scr
+        self.secureContentRef = secureContentRef
         self.queue = queue ?? DispatchQueue.main
         self.progressHandler = progressHandler
         self.completionHandler = completionHandler
@@ -97,8 +97,9 @@ class DownloadFileOperation : NSObject, URLSessionDataDelegate {
             self.totalSize = size
             do {
                 var tempOutputStream = OutputStream(toFileAtPath: self.target.path, append: true)
-                if let scr = self.scr {
-                    tempOutputStream = try SecureOutputStream(stream: tempOutputStream, scr: scr)
+                if !shouldDecryptOnCompletion, let secureContentRef = self.secureContentRef {
+                    tempOutputStream = try SecureOutputStream(stream: tempOutputStream, scr: try SecureContentReference(json: secureContentRef))
+                    
                 }
                 self.outputStream = tempOutputStream
                 self.outputStream?.open()
@@ -129,8 +130,18 @@ class DownloadFileOperation : NSObject, URLSessionDataDelegate {
             self.downloadError(error)
         }
         else {
-            self.queue.async {
-                self.completionHandler(Result.success(self.target))
+            if !shouldDecryptOnCompletion {
+                self.queue.async {
+                    self.completionHandler(Result.success(self.target))
+                }
+            }
+            else if let decryptedFileURL = self.decrypt() {
+                self.queue.async {
+                    self.completionHandler(Result.success(decryptedFileURL))
+                }
+            }
+            else {
+                downloadError()
             }
         }
     }
@@ -170,8 +181,8 @@ private extension DownloadFileOperation {
             decryptedFileURL = decryptedFileURL.appendingPathComponent(self.fileName!)
             
             var outputStream = OutputStream(toFileAtPath: decryptedFileURL.path, append: false)
-            if let scr = self.scr {
-                outputStream = try SecureOutputStream(stream: outputStream, scr: scr)
+            if let ref = self.secureContentRef {
+                outputStream = try SecureOutputStream(stream: outputStream, scr: try SecureContentReference(json: ref))
             }
             else {
                 return nil
@@ -184,7 +195,7 @@ private extension DownloadFileOperation {
             if bufferSize > fileSize {
                 bufferSize = Int(fileSize)
             }
-
+            
             try outputStream?.write(fromInputStrem: inputStream, bufferSize: bufferSize)
             return decryptedFileURL
         }
