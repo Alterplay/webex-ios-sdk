@@ -86,6 +86,12 @@ class DownloadFileOperation : NSObject, URLSessionDataDelegate {
             var request = URLRequest(url: source, cachePolicy: URLRequest.CachePolicy.reloadIgnoringCacheData, timeoutInterval: 0)
             request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
             request.setValue(TrackingId.generator.next, forHTTPHeaderField: "TrackingID")
+            if FileManager.default.fileExists(atPath: self.target.path),
+                let fileAttributes = try? FileManager.default.attributesOfItem(atPath: self.target.path),
+                let fileSize = fileAttributes[.size] as? UInt64 {
+                request.setValue("bytes=\(fileSize)-", forHTTPHeaderField: "Range")
+                self.countSize = fileSize
+            }
             if let dataTask = self.downloadSeesion?.dataTask(with: request){
                 dataTask.resume()
             }
@@ -94,7 +100,7 @@ class DownloadFileOperation : NSObject, URLSessionDataDelegate {
     
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Swift.Void) {
         if let resp = response as? HTTPURLResponse, let length = (resp.allHeaderFields["Content-Length"] as? String)?.components(separatedBy: "/").last, let size = UInt64(length) {
-            self.totalSize = size
+            self.totalSize = size + self.countSize
             do {
                 var tempOutputStream = OutputStream(toFileAtPath: self.target.path, append: true)
                 if !shouldDecryptOnCompletion, let secureContentRef = self.secureContentRef {
