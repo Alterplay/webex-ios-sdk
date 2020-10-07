@@ -417,6 +417,10 @@ public struct RemoteFile {
         return model.image?.url
     }
     
+    public var fileURL: String? {
+        return model.url
+    }
+    
     public var toJSONString: String? {
         return model.toJSONString()
     }
