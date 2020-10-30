@@ -143,7 +143,7 @@ extension Membership {
         else if activity.object is PersonModel {
             person = activity.object as? PersonModel
         }
-        if let person = person, let convId = activity.target?.id, let personId = person.id {
+        if let person = person, let convId = activity.target?.id, let personId = person.entryUUID {
             self.id = WebexId(type: .membership, cluster: clusterId, uuid: "\(personId):\(convId)").base64Id
             self.spaceId = WebexId(type: .room, cluster: clusterId, uuid: convId).base64Id
             self.personId = WebexId(type: .people, cluster: clusterId, uuid: personId).base64Id
