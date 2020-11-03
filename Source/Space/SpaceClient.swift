@@ -259,4 +259,22 @@ public class SpaceClient {
             }
         }
     }
+    
+    /// Returns a list of spaces in which there are active calls.
+    /// Includes 1:1 spaces
+    public func listWithAllActiveCalls(queue: DispatchQueue? = nil, completionHandler: @escaping (Result<[String]>) -> Void) {
+        self.phone.fetchActiveCalls(queue: queue) { result in
+            switch result {
+            case .success(let models):
+                completionHandler(Result.success(models.compactMap() { element in
+                    if let url = element.spaceUrl {
+                        return WebexId.from(url: url , by: self.phone.devices.device)?.base64Id
+                    }
+                    return nil
+                }))
+            case .failure(let error):
+                completionHandler(Result.failure(error))
+            }
+        }
+    }
 }
