@@ -731,7 +731,7 @@ public class MessageClient {
                 if let model = response.result.data {
                     if let encryptionUrl = model.encryptionKeyUrl ?? model.defaultActivityEncryptionKeyUrl {
                         completionHandler(Result.success(encryptionUrl))
-                    } else if let _ = model.kmsResourceObjectUrl {
+                    } else {
                         handleResourceObjectUrl(model: model)
                     }
                 } else {
