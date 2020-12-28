@@ -1,4 +1,4 @@
-// Copyright 2016-2020 Cisco Systems Inc
+// Copyright 2016-2021 Cisco Systems Inc
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -184,6 +184,10 @@ public class Call {
         ///
         /// - since: 2.4.0
         case waiting(CallMembership, WaitReason)
+        /// The person in the membership is muted/unmuted by others.
+        ///
+        /// - since: 2.7.0
+        case audioMutedControlled(CallMembership)
     }
 
     /// The enumeration of iOS broadcasting events.
@@ -1341,6 +1345,7 @@ public class Call {
                     let oldState = membership.state
                     let oldSendingAudio = membership.sendingAudio
                     let oldSendingVideo = membership.sendingVideo
+                    let oldAudioMutedState = membership.isAudioMutedControlled
                     membership.model = participant
                     if membership.state != oldState {
                         onCallMembershipChanges.append(contentsOf: checkMembershipChangeEventFor(membership))
@@ -1351,12 +1356,16 @@ public class Call {
                     if membership.sendingVideo != oldSendingVideo {
                         onCallMembershipChanges.append(CallMembershipChangedEvent.sendingVideo(membership))
                     }
+                    if membership.isAudioMutedControlled != oldAudioMutedState {
+                        onCallMembershipChanges.append(CallMembershipChangedEvent.audioMutedControlled(membership))
+                    }
                     newMemberships.append(membership)
                 } else {
                     let membership = CallMembership(participant: participant, call: self)
                     onCallMembershipChanges.append(contentsOf: checkMembershipChangeEventFor(membership))
                     onCallMembershipChanges.append(CallMembershipChangedEvent.sendingAudio(membership))
                     onCallMembershipChanges.append(CallMembershipChangedEvent.sendingVideo(membership))
+                    onCallMembershipChanges.append(CallMembershipChangedEvent.audioMutedControlled(membership))
                     newMemberships.append(membership)
                 }
             }

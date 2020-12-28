@@ -1,4 +1,4 @@
-// Copyright 2016-2020 Cisco Systems Inc
+// Copyright 2016-2021 Cisco Systems Inc
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -184,7 +184,7 @@ class WebSocketService: WebSocketDelegate {
                         let event = Mapper<CallEventModel>().map(JSON: eventObj),
                         let call = event.callModel,
                         let type = event.type {
-                        SDKLogger.shared.debug("Receive locus event: \(type)")
+                        SDKLogger.shared.debug("Receive locus event: \(type) \n\(eventData)")
                         self.onEvent?(MercuryEvent.recvCall(call))
                     }
                     else {

@@ -73,7 +73,7 @@ Here are some examples of how to use the iOS SDK in your app.
     let clientId = "$YOUR_CLIENT_ID"
     let clientSecret = "$YOUR_CLIENT_SECRET"
     let scope = "spark:all"
-    let redirectUri = "Webexdemoapp://response"
+    let redirectUri = "https://webexdemoapp.com"
 
     let authenticator = OAuthAuthenticator(clientId: clientId, clientSecret: clientSecret, scope: scope, redirectUri: redirectUri)
     let webex = Webex(authenticator: authenticator)
@@ -441,6 +441,10 @@ Here are some examples of how to use the iOS SDK in your app.
               // ...
           case .update(let space):
               // ...
+          case .spaceCallStarted(let spaceId):
+              // ...
+          case .spaceCallEnded(let spaceId):
+              // ...
           }
     }
     ```
@@ -480,7 +484,20 @@ Here are some examples of how to use the iOS SDK in your app.
     })
     ```
 
-19. Change the layout for the active speaker and other attendee composed video
+19. get a list of spaces that have ongoing call
+
+    ```swift
+    webex.spaces.listWithActiveCalls(completionHandler: { (result) in
+        switch result {
+        case .success(let spaceIds):
+            // ...
+        case .failure(_ ):
+            // ...
+        }
+    })
+    ```
+
+20. Change the layout for the active speaker and other attendee composed video
 
     ```swift
     let option: MediaOption = MediaOption.audioVideo(local: ..., remote: ...)
@@ -489,6 +506,18 @@ Here are some examples of how to use the iOS SDK in your app.
     webex.phone.dial(spaceId, option: option) { ret in
         // ...
     }
+    ```
+
+21. Background Noise Removal(BNR)
+    
+    21.1 Enable BNR
+    ```swift
+    webex.phone.audioBNREnabled = true
+    ```
+
+    21.2 Set BNR mode, the default is `.HP`. It only affects if setting `audioBNREnabled` to true.
+    ```swift
+    webex.phone.audioBNRMode = .HP
     ```
 
 
@@ -536,6 +565,6 @@ Recomand to replace variables containing "spark" with "webex" in project code.
 
 ## License
 
-&copy; 2016-2020 Cisco Systems, Inc. and/or its affiliates. All Rights Reserved.
+&copy; 2016-2021 Cisco Systems, Inc. and/or its affiliates. All Rights Reserved.
 
 See [LICENSE](https://github.com/webex/webex-ios-sdk/blob/master/LICENSE) for details.

@@ -1,4 +1,4 @@
-// Copyright 2016-2020 Cisco Systems Inc
+// Copyright 2016-2021 Cisco Systems Inc
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -32,6 +32,20 @@ struct LocusMediaResponseModel: Mappable {
     mutating func mapping(map: Map) {
         locus <- map["locus"]
         mediaConnections <- map["mediaConnections"]
+    }
+}
+
+struct LociResponseModel: Mappable {
+
+    private(set) var loci: [LocusModel]?
+    private(set) var remoteLocusClusterUrls: [String]?
+
+    init?(map: Map) {
+    }
+
+    mutating func mapping(map: Map) {
+        loci <- map["loci"]
+        remoteLocusClusterUrls <- map["remoteLocusClusterUrls"]
     }
 }
 
@@ -116,6 +130,10 @@ struct LocusModel: Mappable {
 
     var isInactive: Bool {
         return fullState?.state == "INACTIVE"
+    }
+    
+    var isActive: Bool {
+        return fullState?.state == "ACTIVE"
     }
     
     var isRemoteVideoMuted: Bool {

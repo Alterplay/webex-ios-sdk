@@ -1,4 +1,4 @@
-// Copyright 2016-2020 Cisco Systems Inc
+// Copyright 2016-2021 Cisco Systems Inc
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -261,6 +261,11 @@ class MediaSessionWrapper {
                 case .videoMaxTxFPS(let value):
                     mediaConfig.videoMaxTxFPS = UInt32(value)
                 }
+            }
+            
+            if phone.audioBNREnabled {
+                mediaConfig.isBNREnabled = phone.audioBNREnabled
+                mediaConfig.bnrProfileMode = UInt8(phone.audioBNRMode.rawValue)
             }
             
             var constraint = MediaConstraintFlag.audio.rawValue

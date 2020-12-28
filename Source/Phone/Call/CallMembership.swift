@@ -1,4 +1,4 @@
-// Copyright 2016-2020 Cisco Systems Inc
+// Copyright 2016-2021 Cisco Systems Inc
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -104,6 +104,23 @@ public struct CallMembership {
     /// - since: 1.3.0
     public var sendingAudio: Bool {
         return self.model.status?.audioStatus == "SENDRECV"
+    }
+    
+    /// True if the `CallMembership` is muted by others. Otherwise, false.
+    ///
+    /// - since: 2.7.0
+    public var isAudioMutedControlled: Bool {
+        return self.model.isAudioMuted
+    }
+    
+    /// The personId of the merbership who muted/unmuted this `CallMembership`
+    ///
+    /// - since: 2.7.0
+    public var audioModifiedBy: String? {
+        if let uuid = self.model.modifiedByUUID {
+            return WebexId(type: .people, cluster: WebexId.DEFAULT_CLUSTER_ID, uuid: uuid).base64Id
+        }
+        return nil
     }
     
     /// True if the `CallMembership` is sending screen share. Otherwise, false.

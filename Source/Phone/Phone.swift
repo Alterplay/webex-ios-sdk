@@ -1,4 +1,4 @@
-// Copyright 2016-2020 Cisco Systems Inc
+// Copyright 2016-2021 Cisco Systems Inc
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -103,6 +103,16 @@ public class Phone {
         case viewLicense(url: URL)
     }
     
+    ///  Modes supported by Background Noise Removal
+    ///
+    /// - since: 2.7.0
+    public enum AudioBNRMode: UInt {
+        /// Low Power
+        case LP = 0
+        /// High Performance
+        case HP
+    }
+    
     /// MARK: - Deprecated
     /// The max receiving bandwidth for audio in unit bps for the call.
     /// Only effective if set before the start of call.
@@ -178,6 +188,18 @@ public class Phone {
     ///
     /// - since: 2.6.0
     public var sharingMaxRxBandwidth: UInt32 = DefaultBandwidth.maxBandwidthSession.rawValue
+    
+    /// Enable Background Noise Removal
+    /// True as using BNR, False as not. The default is false.
+    ///
+    /// - since: 2.7.0
+    public var audioBNREnabled: Bool = false
+    
+    /// Set Background Noise Removal mode, the default is `.HP`.
+    ///
+    /// - Note: The value is only effective if setting `audioBNREnabled` to true.
+    /// - since: 2.7.0
+    public var audioBNRMode: AudioBNRMode = .HP
 
     /// The advanced setings for call. Only effective if set before the start of call.
     ///
@@ -258,6 +280,7 @@ public class Phone {
     
     private let webSocket: WebSocketService
     private var calls = [String: Call]()
+    private var activeSpaceIds = [String]()
     private var mediaContext: MediaSessionWrapper?
 
     private var _canceled: Bool = false
@@ -745,10 +768,32 @@ public class Phone {
     }
 
     func fetchActiveCalls(queue: DispatchQueue? = nil, completionHandler: @escaping (Result<[LocusModel]>) -> Void) {
-        if let device = self.devices.device {
-            self.client.fetch(by: device, queue: queue ?? self.queue.underlying) { res in
-                completionHandler(res.result)
+        var loci = [LocusModel]()
+        var completion:((ServiceResponse<LociResponseModel>) -> Void)?
+        completion = { response in
+            switch response.result {
+            case .success(let lociModel):
+                if let locusModel = lociModel.loci {
+                    loci = loci + locusModel
+                }
+                if let remoteClusterUrl = lociModel.remoteLocusClusterUrls?.first {
+                    self.fetchLoci(remoteClusterUrl, queue: queue ?? self.queue.underlying, completionHandler: completion!)
+                    return
+                }
+                completionHandler(.success(loci))
+            case .failure(let error):
+                completionHandler(.failure(error))
             }
+        }
+        self.fetchLoci(queue: queue ?? self.queue.underlying, completionHandler: completion!)
+    }
+    
+    private func fetchLoci(_ clusterUrl:String? = nil, queue: DispatchQueue, completionHandler: @escaping (ServiceResponse<LociResponseModel>) -> Void) {
+        if let clusterUrl = clusterUrl {
+            self.client.fetch(clusterUrl:clusterUrl, queue: queue, completionHandler: completionHandler)
+        }
+        else if let device = self.devices.device {
+            self.client.fetch(by: device, queue: queue, completionHandler: completionHandler)
         }
     }
 
@@ -946,7 +991,6 @@ public class Phone {
     }
 
     private func doLocusEvent(_ model: LocusModel) {
-        SDKLogger.shared.debug("Receive locus event: \(model.toJSONString(prettyPrint: self.debug) ?? nilJsonStr)")
         guard let url = model.callUrl else {
             SDKLogger.shared.error("CallModel is missing call url")
             return
@@ -975,7 +1019,25 @@ public class Phone {
             // TODO: need to support other device joined case
         }
         else {
-            SDKLogger.shared.info("Cannot handle the CallModel.")
+            SDKLogger.shared.info("Cannot handle the CallModel for a call.")
+        }
+        
+        // Handle callModel for a space call event.
+        guard model.isValid, !model.isOneOnOne, let spaceUrl = model.spaceUrl, let spaceId = WebexId.from(url: spaceUrl , by: self.devices.device)?.base64Id else {
+            SDKLogger.shared.info("Cannot handle the CallModel for a space call event.")
+            return
+        }
+        if model.isActive && !activeSpaceIds.contains(spaceId) {
+            self.activeSpaceIds.append(spaceId)
+            DispatchQueue.main.async {
+                self.webex?.spaces.onEvent?(.spaceCallStarted(spaceId))
+            }
+        }
+        else if !model.isActive && activeSpaceIds.contains(spaceId) {
+            self.activeSpaceIds.removeObject(spaceId)
+            DispatchQueue.main.async {
+                self.webex?.spaces.onEvent?(.spaceCallEnded(spaceId))
+            }
         }
     }
 

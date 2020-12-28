@@ -1,4 +1,4 @@
-// Copyright 2016-2020 Cisco Systems Inc
+// Copyright 2016-2021 Cisco Systems Inc
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -47,6 +47,10 @@ public enum SpaceEvent {
     case create(Space)
     /// The callback when a space was changed (usually a rename).
     case update(Space)
+    /// Callback a spaceId when a space call started.
+    case spaceCallStarted(String)
+    /// Callback a spaceId when a space call ended.
+    case spaceCallEnded(String)
 }
 
 /// A data type represents a Space at Cisco Webex cloud.

@@ -1,4 +1,4 @@
-// Copyright 2016-2020 Cisco Systems Inc
+// Copyright 2016-2021 Cisco Systems Inc
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -42,7 +42,7 @@ public enum Mention {
     case all
 }
 
-/// MessageClient represents a client to the Webex Teams platform. It can send and receive messages.
+/// MessageClient represents a client to the Webex platform. It can send and receive messages.
 ///
 /// Use `Webex.messages` to get an instance of MessageClient.
 ///
@@ -733,7 +733,10 @@ public class MessageClient {
                         completionHandler(Result.success(encryptionUrl))
                     } else {
                         handleResourceObjectUrl(model: model)
+                    }else {
+                        completionHandler(Result.success(nil))
                     }
+                    SDKLogger.shared.debug("Request requestSpaceEncryptionURL ============  \(response.result)")
                 } else {
                     completionHandler(Result.failure(response.result.error ?? MSGError.encryptionUrlFetchFail))
                 }

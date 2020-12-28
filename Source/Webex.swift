@@ -1,4 +1,4 @@
-// Copyright 2016-2020 Cisco Systems Inc
+// Copyright 2016-2021 Cisco Systems Inc
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -62,7 +62,7 @@ public class Webex {
     /// The version number of this Cisco Webex iOS SDK.
     ///
     /// - since: 1.2.0
-    public static let version = "2.6.0"
+    public static let version = "2.7.0"
     
     /// The logger for this SDK.
     ///
@@ -127,16 +127,6 @@ public class Webex {
     public init(authenticator: Authenticator) {
         self.authenticator = authenticator
         verbose()
-        let sessionManager = Alamofire.SessionManager.default
-        sessionManager.delegate.taskWillPerformHTTPRedirection = { session, task, response, request in
-            var redirectedRequest = request
-            if let originalRequest = task.originalRequest, let headers = originalRequest.allHTTPHeaderFields, let authorizationHeaderValue = headers["Authorization"] {
-                var mutableRequest = request
-                mutableRequest.setValue(authorizationHeaderValue, forHTTPHeaderField: "Authorization")
-                redirectedRequest = mutableRequest
-            }
-            return redirectedRequest
-        }
     }
     
     /// People are registered users of Cisco Webex.
