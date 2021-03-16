@@ -195,6 +195,12 @@ public class Phone {
     /// - since: 2.7.0
     public var audioBNREnabled: Bool = false
     
+    /// Set true to keep Webex server connection when app enters background mode. Default is false.
+    ///
+    /// - Note: Generally App thread would be suspended when it enters background, `enableBackgroundConnection` can be effective when your App has handled background mode.
+    /// - since: 2.8.0
+    public var enableBackgroundConnection: Bool = false
+    
     /// Set Background Noise Removal mode, the default is `.HP`.
     ///
     /// - Note: The value is only effective if setting `audioBNREnabled` to true.
@@ -715,15 +721,23 @@ public class Phone {
         }
     }
     
-    func layout(call: Call, layout: MediaOption.VideoLayout) {
+    func layout(call: Call, layout: MediaOption.VideoLayout, completionHandler: ((Error?) -> Void)? = nil) {
         self.queue.sync {
             if let url = call.model.myself?.url {
                 self.client.layout(url, by: call.device.deviceUrl.absoluteString, layout: layout, queue: self.queue.underlying) { res in
+                    switch res.result {
+                    case .success(_):
+                        completionHandler?(nil)
+                    case .failure(let error):
+                        completionHandler?(error)
+                    }
                     self.queue.yield()
                 }
             }
             else {
-                WebexError.serviceFailed(reason: "Missing self participant URL").report()
+                let webexError = WebexError.serviceFailed(reason: "Missing self participant URL")
+                completionHandler?(webexError)
+                webexError.report()
                 self.queue.yield()
             }
         }
@@ -1094,6 +1108,14 @@ public class Phone {
                     fire(res.result.data == nil ? nil : SpaceEvent.update(res.result.data!))
                 }
             }
+            else if let parent = activity.parent, parent.type == MessageType.edit.value, let convUrl = activity.conversationUrl {
+                self.webex?.messages.decrypt(activity: activity, of: convUrl) { decrypted in
+                    let message = Message(activity: decrypted, clusterId: clusterId, person: self.me)
+                    if let comment = message.activity.object as? CommentModel, let parentId = message.parentId {
+                        fire(MessageEvent.messageUpdated(messageId: parentId, type: .message(MesssageChange(textAsObject: message.textAsObject, published: message.created, comment: comment))))
+                    }
+                }
+            }
             else if verb == .post || verb == .share, let convUrl = activity.conversationUrl {
                 self.webex?.messages.decrypt(activity: activity, of: convUrl) { decrypted in
                     let message = Message(activity: decrypted, clusterId: clusterId, person: self.me)
@@ -1187,8 +1209,9 @@ public class Phone {
     
     @objc func onApplicationDidEnterBackground() {
         SDKLogger.shared.info("Application did enter background")
-        // self.disconnectFromWebSocket()
-        // Leave websocket connected for CallKit integration
+        if !enableBackgroundConnection {
+            self.disconnectFromWebSocket()
+        }
     }
     
     private func connectToWebSocket() {
